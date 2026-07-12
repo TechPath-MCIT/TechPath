@@ -1,5 +1,12 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Installing Necessary Package
+Please cd into the root directory of the project and run
+
+```bash
+npm install
+```
+
 ## Getting Started
 
 First, run the development server:
