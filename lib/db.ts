@@ -1,28 +1,32 @@
 // lib/db.ts
 import { Pool } from 'pg';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const globalForPg = globalThis as unknown as { pool: Pool | undefined };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-export const pool = globalForPg.pool ?? new Pool({
+// 1. Re-initialize the native PG driver pool using explicit options
+const pool = new Pool({
+  // Use your granular env variables directly to force the connection parameters
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '5432', 10),
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   
-  // Pool Sizing configurations
-  max: parseInt(process.env.DB_POOL_MAX || '20', 10),
-  idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
-  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT || '2000', 10),
-  
-  // AWS RDS requires SSL encrypted connection requests over the public web
+  // ⚡ Crucial: Force the adapter to accept AWS RDS certificates smoothly
   ssl: {
-    rejectUnauthorized: false // Handles handshakes smoothly without needing local certificate paths
-  },
-  
-  // Session query timeouts
-  statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
-  query_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10)
+    rejectUnauthorized: false 
+  }
 });
 
-if (process.env.NODE_ENV !== 'production') globalForPg.pool = pool;
+// 2. Wrap it inside the Prisma 7 Driver Adapter instance
+const adapter = new PrismaPg(pool);
+
+// 3. Hand off the adapter to the PrismaClient constructor
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  adapter: adapter,
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
