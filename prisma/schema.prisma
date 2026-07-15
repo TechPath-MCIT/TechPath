@@ -1,0 +1,27 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Role {
+  roleId                     Int     @id @map("Role ID")
+  role                       String?
+  jobSatisfaction            Float?  @map("Job Satisfaction")
+  entrySalary                Float?  @map("Entry Salary")
+  salaryOutlook              Float?  @map("Salary Outlook")
+  associates                 Float?
+  bachelors                  Float?
+  masters                    Float?
+  phd                        Float?  @map("Ph.D")
+  someCollegeWithoutDegree   Float?  @map("EdLevel_Some college/university study without earning a degree")
+  webFrameworkImportance     Float?  @map("WebFrameWork Importance")
+  databaseImportance         Float?  @map("Database Importance")
+  codingLanguageImportance   Float?  @map("Coding Language Importance")
+
+  @@map("roles") // Ensures Prisma queries the exact "roles" table
+}
