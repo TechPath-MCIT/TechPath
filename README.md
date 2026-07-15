@@ -1,10 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Installing Necessary Package
-Please cd into the root directory of the project and run
+Please cd into the root directory of the project and 
+Before running the command below, please ensure you place the .env.local file in the root directly.
+
+run
 
 ```bash
-npm install
+npm ci
 ```
 
 ## Getting Started
