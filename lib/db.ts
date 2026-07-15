@@ -1,28 +1,12 @@
 // lib/db.ts
-import { Pool } from 'pg';
+import { PrismaClient } from '@prisma/client';
 
-const globalForPg = globalThis as unknown as { pool: Pool | undefined };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-export const pool = globalForPg.pool ?? new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  
-  // Pool Sizing configurations
-  max: parseInt(process.env.DB_POOL_MAX || '20', 10),
-  idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
-  connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONN_TIMEOUT || '2000', 10),
-  
-  // AWS RDS requires SSL encrypted connection requests over the public web
-  ssl: {
-    rejectUnauthorized: false // Handles handshakes smoothly without needing local certificate paths
-  },
-  
-  // Session query timeouts
-  statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10),
-  query_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT || '30000', 10)
+// Since Prisma 7 uses prisma.config.ts to resolve the URL,
+// we just need to instantiate the client.
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 });
 
-if (process.env.NODE_ENV !== 'production') globalForPg.pool = pool;
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
