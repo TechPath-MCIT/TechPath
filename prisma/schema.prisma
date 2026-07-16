@@ -1,27 +1,90 @@
-// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "postgresql"
 }
 
-generator client {
-  provider = "prisma-client-js"
+model Role {
+  roleId                   Int             @id @map("Role ID")
+  role                     String?
+  jobSatisfaction          Float?          @map("Job Satisfaction")
+  entrySalary              Float?          @map("Entry Salary")
+  salaryOutlook            Float?          @map("Salary Outlook")
+  associates               Float?
+  bachelors                Float?
+  masters                  Float?
+  phd                      Float?          @map("Ph.D")
+  someCollegeWithoutDegree Float?          @map("EdLevel_Some college/university study without earning a degree")
+  webFrameworkImportance   Float?          @map("WebFrameWork Importance")
+  databaseImportance       Float?          @map("Database Importance")
+  codingLanguageImportance Float?          @map("Coding Language Importance")
+  role_industry            role_industry[] @ignore
+  role_skills              role_skills[]   @ignore
+
+  @@map("roles")
 }
 
-model Role {
-  roleId                     Int     @id @map("Role ID")
-  role                       String?
-  jobSatisfaction            Float?  @map("Job Satisfaction")
-  entrySalary                Float?  @map("Entry Salary")
-  salaryOutlook              Float?  @map("Salary Outlook")
-  associates                 Float?
-  bachelors                  Float?
-  masters                    Float?
-  phd                        Float?  @map("Ph.D")
-  someCollegeWithoutDegree   Float?  @map("EdLevel_Some college/university study without earning a degree")
-  webFrameworkImportance     Float?  @map("WebFrameWork Importance")
-  databaseImportance         Float?  @map("Database Importance")
-  codingLanguageImportance   Float?  @map("Coding Language Importance")
+model Skill {
+  skillId     Int           @id @map("id")
+  name        String?       @map("name")
+  type        String?       @map("type")
+  role_skills role_skills[] @ignore
 
-  @@map("roles") // Ensures Prisma queries the exact "roles" table
+  @@map("skills")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model course_reviews {
+  review_id          BigInt    @id @default(autoincrement())
+  course_id          String
+  source             String
+  review             String?
+  semester           String?
+  publish_time       DateTime? @db.Date
+  difficulty         Int?      @db.SmallInt
+  workload           Decimal?  @db.Decimal(6, 2)
+  rating             Int?      @db.SmallInt
+  review_fingerprint String    @unique
+  courses            courses   @relation(fields: [course_id], references: [course_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model courses {
+  course_id      String           @id
+  course_name    String
+  description    String?
+  prerequisites  Json?
+  course_units   Decimal?         @db.Decimal(3, 1)
+  creators       Json?
+  course_reviews course_reviews[]
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model role_industry {
+  id       Int?
+  Role_ID  Int?    @map("Role ID")
+  industry String?
+  share    Float?
+  roles    Role?   @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model role_skills {
+  Role_ID  Int?   @map("Role ID")
+  Skill_ID Int?   @map("Skill ID")
+  count    Float?
+  roles    Role?  @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
+  skills   Skill? @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@ignore
+}
+
+model userinfo {
+  id        Int     @id
+  username  String? @db.VarChar(255)
+  useremail String? @db.VarChar(255)
+  profileid Int?
 }

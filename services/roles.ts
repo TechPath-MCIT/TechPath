@@ -27,7 +27,7 @@ export async function getRoleById(roleId: number) {
 
 /**
  * Inserts a brand new tracking role record down into AWS RDS
- */
+
 export async function createNewRole(title: string) {
   return await prisma.role.create({
     data: {
@@ -37,3 +37,4 @@ export async function createNewRole(title: string) {
     },
   });
 }
+ */
