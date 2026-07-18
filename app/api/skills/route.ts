@@ -1,7 +1,7 @@
 // app/api/roles/route.ts
-import { NextResponse } from 'next/server';
+import {NextRequest, NextResponse} from 'next/server';
 import { getRolesList } from '@/services/roles';
-import {getSkillsList} from "@/services/skills"; // Imports your clean SQL service layer
+import {getSkillByName, getSkillsList} from "@/services/skills"; // Imports your clean SQL service layer
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +17,12 @@ export const dynamic = 'force-dynamic';
  *       500:
  *         description: Core internal server network execution block.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         const skills = await getSkillsList(10);
         return NextResponse.json({ success: true, count: skills.length, data: skills }, { status: 200 });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
+
 }
