@@ -6,7 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
 // 1. Re-initialize the native PG driver pool using explicit options
-const pool = new Pool({
+export const pool = new Pool({
   // Use your granular env variables directly to force the connection parameters
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '5432', 10),
