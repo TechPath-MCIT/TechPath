@@ -20,8 +20,10 @@ model Role {
   webFrameworkImportance   Float?          @map("WebFrameWork Importance")
   databaseImportance       Float?          @map("Database Importance")
   codingLanguageImportance Float?          @map("Coding Language Importance")
-  role_industry            role_industry[] @ignore
-  role_skills              role_skills[]   @ignore
+  role_industry            role_industry[]
+  role_skills              role_skills[]
+  profiles                 Profile[]
+
 
   @@map("roles")
 }
@@ -30,7 +32,7 @@ model Skill {
   skillId     Int           @id @map("id")
   name        String?       @map("name")
   type        String?       @map("type")
-  role_skills role_skills[] @ignore
+  role_skills role_skills[]
 
   @@map("skills")
 }
@@ -62,13 +64,11 @@ model courses {
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model role_industry {
-  id       Int?
+  id       Int     @id
   Role_ID  Int?    @map("Role ID")
   industry String?
   share    Float?
   roles    Role?   @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
-
-  @@ignore
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -76,15 +76,31 @@ model role_skills {
   Role_ID  Int?   @map("Role ID")
   Skill_ID Int?   @map("Skill ID")
   count    Float?
+  id       Int    @id @default(autoincrement())
   roles    Role?  @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
   skills   Skill? @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
-
-  @@ignore
 }
 
-model userinfo {
+model Profile{
+  profile_ID Int @id @default(autoincrement())
+  fullname String
+  dreamRole Role? @relation(fields : [roleId], references: [roleId])
+  roleId Int?
+  highestDegree String
+  isTest Boolean @default(false)
+  User User? @ignore
+  @@map("profile")
+
+}
+
+model User {
   id        Int     @id
   username  String? @db.VarChar(255)
   useremail String? @db.VarChar(255)
-  profileid Int?
+  profile Profile? @relation(fields : [profile_ID], references: [profile_ID])
+  profile_ID Int? @unique
+
+  @@ignore
+
+  @@map("userinfo")
 }

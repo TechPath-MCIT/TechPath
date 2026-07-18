@@ -15,7 +15,7 @@ type Experience = {
   years: number,
   bullets: Array<string>,
 }
-interface parsed_resume{
+export interface parsed_resume{
   name?: string;
   email?: string;
   skills?: Array<string>;
