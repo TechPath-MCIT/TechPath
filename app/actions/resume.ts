@@ -73,7 +73,7 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
       schema: z.object({
         name: z.string().describe("Candidate full name"),
         email: z.string().describe("Candidate primary email address"),
-        skills: z.array(z.string()).describe("List of code frameworks, languages, systems, and hard skills found."),
+        skills: z.array(z.string()).describe("List of code frameworks, languages, systems, and hard [id] found."),
         education: z.string().describe("Candidate highest level of education, use (B.S or M.S or phD, or other)"),
 
         experience: z.array(

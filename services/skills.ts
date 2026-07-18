@@ -1,8 +1,9 @@
-// services/skills.ts
+// services/route.ts
+
 import { prisma } from '@/lib/db';
 
 /**
- * Fetches a bounded list of skills from the cloud database
+ * Fetches a bounded list of [id] from the cloud database
  * @param limit Number of records to return
  */
 export async function getSkillsList(limit: number = 10) {
@@ -15,6 +16,7 @@ export async function getSkillsList(limit: number = 10) {
 }
 
 /**
+ *
  * Fetches a single role matching a specific ID parameter
  */
 export async function getSkillById(skillId: number) {
@@ -24,6 +26,25 @@ export async function getSkillById(skillId: number) {
         },
     });
 }
+
+export async function getSkillByName(skill: string) {
+    const name_formated = skill.toLowerCase();
+
+    return prisma.skill.findFirst({
+        select:{
+            skillId : true
+        },
+        where:{
+            name: {
+                equals: name_formated,
+                mode: 'insensitive',
+            },
+            },
+
+    })
+}
+
+
 
 /**
  * Inserts a brand new tracking role record down into AWS RDS

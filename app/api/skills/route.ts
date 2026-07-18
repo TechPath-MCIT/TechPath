@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
  *       500:
  *         description: Core internal server network execution block.
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
         const skills = await getSkillsList(10);
         return NextResponse.json({ success: true, count: skills.length, data: skills }, { status: 200 });

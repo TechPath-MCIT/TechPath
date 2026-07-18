@@ -2,7 +2,7 @@
 import { prisma } from '@/lib/db';
 import {Prisma} from "@prisma/client";
 import {parsed_resume} from "@/app/actions/resume"
-import {email} from "zod";
+import * as skills from '@/services/skills'
 /**
  * Fetches a bounded list of profiles from the cloud database
  * @param limit Number of records to return
@@ -55,7 +55,78 @@ export async function createProfile( resume : parsed_resume, test = false): Prom
         }
 
     )
+}
 
+export async function getSkillsByProfile(profile_ID: number) {
+
+    return prisma.profile_Skills.findMany({
+        where:{
+            profileId: profile_ID
+        }
+    })
+
+}
+
+/**
+ * add [id] to a given profile
+ * @param profile_ID to add [id] to
+ * @param skills_ids array of skill id's to add [id]
+ *
+ * return the [id] table for the given profile id
+ */
+export async function addSkillsToProfile(profile_ID: number, skills_ids: number[]) {
+    let success = true;
+    try{
+        for (let i = 0; i < skills_ids.length; i++) {
+            await prisma.profile_Skills.create({
+                data:{
+                    profileId: profile_ID,
+
+                    skillId: skills_ids[i],
+
+
+                }
+            })
+
+        }
+
+    }
+
+    catch(error){
+        success = false;
+    }
+
+    const data = await getSkillsByProfile(profile_ID);
+
+    return {'success':success, 'data':data};
+
+}
+
+/**
+ * add skills to user by name of skill
+ * @param profile_ID to add skill to
+ * @param skills_name array of skills to add
+ */
+export async function addSkillstoProfileByName(profile_ID: number, skills_name: string[]) {
+    const skills_ids = Array<number>();
+
+    const success = false;
+
+    for (let i = 0; i < skills_name.length; i++) {
+        const skill = await skills.getSkillByName(skills_name[i]);
+        if(skill != null){
+            skills_ids.push(skill.skillId);
+        }
+    }
+
+    if(skills_ids.length == 0){
+        const data = await getSkillsByProfile(profile_ID);
+
+
+        return {'success':success, 'data':data};
+    }
+
+    return await addSkillsToProfile(profile_ID, skills_ids);
 
 
 }

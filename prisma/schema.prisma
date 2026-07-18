@@ -33,7 +33,7 @@ model Skill {
   name        String?       @map("name")
   type        String?       @map("type")
   role_skills role_skills[]
-
+  profiles Profile_Skills[]
   @@map("skills")
 }
 
@@ -69,6 +69,7 @@ model role_industry {
   industry String?
   share    Float?
   roles    Role?   @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
+  @@unique([Role_ID, industry])
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -88,8 +89,19 @@ model Profile{
   roleId Int?
   highestDegree String
   isTest Boolean @default(false)
+  Skills Profile_Skills[]
   User User? @ignore
   @@map("profile")
+
+}
+
+model Profile_Skills{
+  id Int @id @default(autoincrement())
+  Profile  Profile @relation(fields: [profileId], references: [profile_ID])
+  profileId Int
+  Skills Skill  @relation(fields: [skillId], references: [skillId])
+  skillId Int
+  @@unique([profileId, skillId])
 
 }
 

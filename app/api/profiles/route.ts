@@ -1,8 +1,8 @@
 // app/api/profiles/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import * as profile from '@/services/profiles'; // Imports your clean SQL service layer
-import {parsed_resume, resumeParser} from "@/app/actions/resume";
-import {createSwaggerSpec, withSwagger} from "next-swagger-doc";
+import { parsed_resume, resumeParser } from "@/app/actions/resume";
+import { createSwaggerSpec, withSwagger } from "next-swagger-doc";
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -86,14 +86,18 @@ export async function POST(request: NextRequest) {
         }
 
         const created = await profile.createProfile(parsed);
+        if (parsed.skills){
+            const profile_skill = await profile.addSkillstoProfileByName(created.profile_ID, parsed.skills);
+        }
+        return NextResponse.json({ success: true, data: created , skills: await profile.getSkillsByProfile(created.profile_ID)}, { status: 201 });
 
-        return NextResponse.json({ success: true, data: created }, { status: 201 });
+
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     } finally {
         // Best-effort cleanup of the buffered upload.
         if (tempPath) {
-            await fs.unlink(tempPath).catch(() => {});
+            await fs.unlink(tempPath).catch(() => { });
         }
     }
 }
