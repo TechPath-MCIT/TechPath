@@ -4,7 +4,7 @@ import {Prisma} from "@prisma/client";
 import {parsed_resume} from "@/app/actions/resume"
 import {email} from "zod";
 /**
- * Fetches a bounded list of roles from the cloud database
+ * Fetches a bounded list of profiles from the cloud database
  * @param limit Number of records to return
  */
 export async function getProfileList(limit: number = 10) {
@@ -17,7 +17,7 @@ export async function getProfileList(limit: number = 10) {
 }
 
 /**
- * Fetches a single role matching a specific ID parameter
+ * Fetches a single profile matching a specific ID parameter
  */
 export async function getProfileById(profile_ID: number) {
     return prisma.profile.findUnique({
@@ -27,43 +27,34 @@ export async function getProfileById(profile_ID: number) {
     });
 }
 
-export async function createProfile( resume : parsed_resume, test = false): Promise<boolean> {
-
-    if(!resume.success){
-        return false;
-    }
+/**
+ * Create profile based on passed in resume information
+ * @param resume data to pass in
+ * @param test if the user is a test user or not
+ */
+export async function createProfile( resume : parsed_resume, test = false): Promise<{ roleId: number | null;
+    profile_ID: number;
+    fullname: string;
+    highestDegree: string;
+    isTest: boolean;}>{
 
     const full_name = resume.name || "N/A";
 
     const highestDegree = resume.education ||"N/A";
 
 
-    try{
-        const result = await prisma.profile.create(
-            {
-                data : {
-                    highestDegree : highestDegree,
-                    fullname  : full_name,
-                    isTest : test,
-                }
-
-
+    return prisma.profile.create(
+        {
+            data : {
+                highestDegree : highestDegree,
+                fullname  : full_name,
+                isTest : test,
             }
 
-        )
 
-        return true;
+        }
 
-    }
-
-    catch(err){
-        return false;
-    }
-
-
-
-
-
+    )
 
 
 

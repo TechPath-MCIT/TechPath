@@ -7,6 +7,8 @@ import mammoth from 'mammoth';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import {createProfile} from "@/services/profiles";
+import { NextResponse } from 'next/server';
 
 dotenv.config({ path: '.env.local' });
 type Experience = {
@@ -123,10 +125,5 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
 }
 
 
-export async function createResumeData(resume_data:parsed_resume ) : Promise<void> {
 
-
-
-
-}
 
