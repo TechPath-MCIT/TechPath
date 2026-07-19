@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
  * @swagger
  * /api/skills:
  *   get:
+ *     tags:
+ *       - Skills
  *     summary: Grab a list of skills
  *     description: Fetches a bounded tracking array directly from our AWS RDS database cluster using the internal services query layer.
  *     responses:

@@ -14,6 +14,8 @@ export const dynamic = 'force-dynamic';
  * @swagger
  * /api/profiles:
  *   get:
+ *     tags:
+ *       - Profiles
  *     summary: Grab a list of profiles
  *     description: Fetches a bounded tracking array directly from our AWS RDS database cluster using the internal services query layer.
  *     responses:
@@ -35,6 +37,8 @@ export async function GET() {
  * @swagger
  * /api/profiles:
  *   post:
+ *     tags:
+ *       - Profiles
  *     summary: Create a profile from an uploaded resume
  *     description: Accepts a .pdf or .docx resume as multipart/form-data, parses it, and saves the result as a new profile via the create profile service.
  *     requestBody:
