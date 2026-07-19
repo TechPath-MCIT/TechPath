@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
  * @swagger
  * /api/roles:
  *   get:
+ *     tags:
+ *       - Roles
  *     summary: Grab a list of roles
  *     description: Fetches a bounded tracking array directly from our AWS RDS database cluster using the internal services query layer.
  *     responses:

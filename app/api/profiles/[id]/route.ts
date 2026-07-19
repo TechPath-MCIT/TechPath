@@ -11,6 +11,8 @@ import * as profiles from '@/services/profiles';
  * @swagger
  * /api/profiles/{id}:
  *   get:
+ *     tags:
+ *       - Skills of Profiles
  *     summary: search profile by id
  *     description:
  *       return the profile based on given id, if it exists

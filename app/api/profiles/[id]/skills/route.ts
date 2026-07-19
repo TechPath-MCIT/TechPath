@@ -15,6 +15,8 @@ interface RouteContext {
  * @swagger
  * /api/profiles/{id}/skills:
  *   get:
+ *     tags:
+ *       - Skills of Profiles
  *     summary: get skills by id
  *     description:
  *       return the skills based on given id, if it exists
@@ -31,11 +33,9 @@ interface RouteContext {
  *           Successfully fetched profile. Returns the single matching skill when a name is provided and found.
  *       404:
  *         description: A id was provided but no matching profile was found.
- *
  *       500:
  *         description: Core internal server network execution block.
- *
- */
+ * */
 export async function GET(request: NextRequest, context: RouteContext)  {
     const resolve_params = await context.params;
 
@@ -62,6 +62,8 @@ export async function GET(request: NextRequest, context: RouteContext)  {
  * @swagger
  * /api/profiles/{id}/skills:
  *   put:
+ *     tags:
+ *       - Skills of Profiles
  *     summary: get skills by id
  *     description:
  *       return the skills based on given id, if it exists
