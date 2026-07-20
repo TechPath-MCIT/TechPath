@@ -28,33 +28,49 @@ export async function getProfileById(profile_ID: number) {
 }
 
 /**
+ * Maps parsed resume fields onto the Profile columns shared by create and update.
+ * @param resumeId the Resume row (raw resume text) this profile data was parsed from
+ */
+function resumeToProfileData(resume: parsed_resume, test: boolean, resumeId: number) {
+    const totalYears = resume.experiences?.reduce((sum, exp) => sum + (exp.years || 0), 0);
+
+    return {
+        fullname: resume.name || "N/A",
+        highestDegree: resume.education || "N/A",
+        isTest: test,
+        educationhistory: resume.educationHistory ?? Prisma.JsonNull,
+        yearofexperience: totalYears ?? null,
+        profexperience: resume.experiences ?? Prisma.JsonNull,
+        skills: resume.skills?.length ? resume.skills.join(", ") : null,
+        resumeid: resumeId,
+    };
+}
+
+/**
  * Create profile based on passed in resume information
  * @param resume data to pass in
+ * @param resumeId the Resume row (raw resume text) this profile data was parsed from
  * @param test if the user is a test user or not
  */
-export async function createProfile( resume : parsed_resume, test = false): Promise<{ roleId: number | null;
-    profile_ID: number;
-    fullname: string;
-    highestDegree: string;
-    isTest: boolean;}>{
+export async function createProfile(resume: parsed_resume, resumeId: number, test = false) {
+    return prisma.profile.create({
+        data: resumeToProfileData(resume, test, resumeId),
+    });
+}
 
-    const full_name = resume.name || "N/A";
-
-    const highestDegree = resume.education ||"N/A";
-
-
-    return prisma.profile.create(
-        {
-            data : {
-                highestDegree : highestDegree,
-                fullname  : full_name,
-                isTest : test,
-            }
-
-
-        }
-
-    )
+/**
+ * Update an existing profile in place with newly parsed resume information
+ * (used when a user who already has a Profile uploads a new resume).
+ * @param profile_ID the profile to update
+ * @param resume data to pass in
+ * @param resumeId the Resume row (raw resume text) this profile data was parsed from
+ * @param test if the user is a test user or not
+ */
+export async function updateProfileFromResume(profile_ID: number, resume: parsed_resume, resumeId: number, test = false) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: resumeToProfileData(resume, test, resumeId),
+    });
 }
 
 export async function getSkillsByProfile(profile_ID: number) {
@@ -107,6 +123,18 @@ export async function addSkillsToProfile(profile_ID: number, skills_ids: number[
  * @param profile_ID to add skill to
  * @param skills_name array of skills to add
  */
+/**
+ * Replace all skills linked to a profile with a fresh set parsed from a resume.
+ * Clears existing links first so re-uploads don't hit unique-constraint errors
+ * on skills that were already linked.
+ * @param profile_ID to replace skills for
+ * @param skills_name array of skills to link
+ */
+export async function replaceProfileSkills(profile_ID: number, skills_name: string[]) {
+    await prisma.profile_Skills.deleteMany({ where: { profileId: profile_ID } });
+    return addSkillstoProfileByName(profile_ID, skills_name);
+}
+
 export async function addSkillstoProfileByName(profile_ID: number, skills_name: string[]) {
     const skills_ids = Array<number>();
 

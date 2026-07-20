@@ -94,25 +94,17 @@ export async function GET(request: NextRequest, context: RouteContext)  {
  */
 export async function PUT(request: NextRequest)  {
     try{
-
         const data = await request.json();
-
         const profile_id = Number(data.profile_id);
-
         const skills = data.skills as string[];
-
         const result = await profiles.addSkillstoProfileByName(profile_id, skills);
-
 
         if(result.success){
             return NextResponse.json({ success: true, data: result.data }, { status: 200 })
         }
-
         else{
             return NextResponse.json({ success: false, data: result.data }, { status: 409 })
         }
-
-
     }
 
     catch (error: any) {
