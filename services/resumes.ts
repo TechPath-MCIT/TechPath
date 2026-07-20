@@ -10,3 +10,12 @@ export async function createResume(rawText: string) {
         data: { rawtext: rawText },
     });
 }
+
+/**
+ * Fetches a single resume matching a specific ID parameter
+ */
+export async function getResumeById(resumeid: number) {
+    return prisma.resume.findUnique({
+        where: { resumeid },
+    });
+}
