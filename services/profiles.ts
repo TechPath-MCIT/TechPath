@@ -28,6 +28,18 @@ export async function getProfileById(profile_ID: number) {
 }
 
 /**
+ * Sets a profile's ideal/dream role.
+ * @param profile_ID the profile to update
+ * @param roleId the chosen role's id in the roles table
+ */
+export async function setDreamRole(profile_ID: number, roleId: number) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { roleId },
+    });
+}
+
+/**
  * Maps parsed resume fields onto the Profile columns shared by create and update.
  * @param resumeId the Resume row (raw resume text) this profile data was parsed from
  */
