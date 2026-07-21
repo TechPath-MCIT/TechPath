@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import * as users from "@/services/users";
 
 export default async function Home() {
   const { userId } = await auth();
@@ -8,6 +9,7 @@ export default async function Home() {
     redirect("/sign-in");
   }
 
-  // Signed in — will redirect to /landscape or /resume-upload once DB is set up (Step 5)
-  redirect("/resume-upload");
+  const user = await users.getUserByClerkId(userId);
+
+  redirect(user?.profile_ID ? "/landscape" : "/resume-upload");
 }
