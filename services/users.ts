@@ -35,3 +35,13 @@ export async function getUserByClerkId(clerkId: string) {
         where: { clerkId },
     });
 }
+
+/**
+ * Links a User to the Profile created from their resume upload.
+ */
+export async function linkProfileToUser(clerkId: string, profile_ID: number) {
+    return prisma.user.update({
+        where: { clerkId },
+        data: { profile_ID },
+    });
+}
