@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function ResumeUploadForm() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
@@ -24,6 +26,12 @@ export default function ResumeUploadForm() {
         body: formData,
       });
       setStatus(res.status);
+
+      if (res.status === 200 || res.status === 201) {
+        router.push("/landscape");
+        return;
+      }
+
       setResult(await res.json());
     } catch (error: any) {
       console.error("Resume upload failed:", error);
