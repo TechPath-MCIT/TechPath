@@ -3,7 +3,7 @@ import { SignIn } from "@clerk/nextjs";
 export default function SignInPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-      <SignIn fallbackRedirectUrl="/api/users/sync" />
+      <SignIn fallbackRedirectUrl="/api/users/sync" signUpFallbackRedirectUrl="/api/users/sync" />
     </div>
   );
 }
