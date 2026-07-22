@@ -3,12 +3,29 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
 export default function ResumeUploadForm() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<number | null>(null);
   const [result, setResult] = useState<unknown>(null);
+
+  function handleFileChange(selected: File | null) {
+    setResult(null);
+    setStatus(null);
+
+    if (selected && selected.size > MAX_FILE_SIZE_BYTES) {
+      setFile(null);
+      setFileError("File is too large. Please upload a resume under 5MB.");
+      return;
+    }
+
+    setFileError(null);
+    setFile(selected);
+  }
 
   async function handleUpload() {
     if (!file) return;
@@ -47,9 +64,10 @@ export default function ResumeUploadForm() {
       <input
         type="file"
         accept=".pdf,.docx"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
         className="text-sm"
       />
+      {fileError && <p className="text-sm text-red-600">{fileError}</p>}
       {file && <p className="text-sm text-zinc-600">Selected: {file.name}</p>}
       <button
         onClick={handleUpload}
@@ -58,7 +76,9 @@ export default function ResumeUploadForm() {
       >
         {loading ? "Uploading..." : "Upload Resume"}
       </button>
-      {!file && <p className="text-sm text-zinc-400">Choose a .pdf or .docx file above to enable upload.</p>}
+      {!file && !fileError && (
+        <p className="text-sm text-zinc-400">Choose a .pdf or .docx file above to enable upload.</p>
+      )}
       {status !== null && (
         <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-100 p-4 text-xs">
           {`status: ${status}\n${JSON.stringify(result, null, 2)}`}
