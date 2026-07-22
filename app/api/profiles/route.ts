@@ -13,6 +13,8 @@ import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
 
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
 /**
  * @swagger
  * /api/profiles:
@@ -92,6 +94,13 @@ export async function POST(request: NextRequest) {
         if (!(file instanceof File)) {
             return NextResponse.json(
                 { success: false, error: "A resume file is required under the 'file' field." },
+                { status: 400 },
+            );
+        }
+
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+            return NextResponse.json(
+                { success: false, error: "File is too large. Please upload a resume under 5MB." },
                 { status: 400 },
             );
         }
