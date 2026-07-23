@@ -11,15 +11,11 @@ export default async function ResumeUploadPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-      <div className="max-w-2xl w-full p-8 bg-white rounded-lg shadow-sm">
-        <div className="flex items-start justify-between mb-4">
-          <h1 className="text-3xl font-bold">Resume Upload</h1>
-          <SignOutButton />
-        </div>
-        <p className="text-zinc-600 mb-6">
-          Upload your resume to get started with TechPath.
-        </p>
+    <div className="min-h-screen flex items-center justify-center p-6 relative" style={{ backgroundColor: "#fafafa" }}>
+      <div className="absolute top-6 right-6">
+        <SignOutButton />
+      </div>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
         <ResumeUploadForm />
       </div>
     </div>
