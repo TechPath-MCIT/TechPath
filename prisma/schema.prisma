@@ -20,20 +20,20 @@ model Role {
   webFrameworkImportance   Float?          @map("WebFrameWork Importance")
   databaseImportance       Float?          @map("Database Importance")
   codingLanguageImportance Float?          @map("Coding Language Importance")
+  profiles                 Profile[]
   role_industry            role_industry[]
   role_skills              role_skills[]
-  profiles                 Profile[]
-
 
   @@map("roles")
 }
 
 model Skill {
-  skillId     Int           @id @map("id")
-  name        String?       @map("name")
-  type        String?       @map("type")
+  skillId     Int              @id @map("id")
+  name        String?          @map("name")
+  type        String?          @map("type")
+  profiles    Profile_Skills[]
   role_skills role_skills[]
-  profiles Profile_Skills[]
+
   @@map("skills")
 }
 
@@ -69,6 +69,7 @@ model role_industry {
   industry String?
   share    Float?
   roles    Role?   @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
+
   @@unique([Role_ID, industry])
 }
 
@@ -82,37 +83,51 @@ model role_skills {
   skills   Skill? @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Profile{
-  profile_ID Int @id @default(autoincrement())
-  fullname String
-  dreamRole Role? @relation(fields : [roleId], references: [roleId])
-  roleId Int?
-  highestDegree String
-  isTest Boolean @default(false)
-  Skills Profile_Skills[]
-  User User? @ignore
-  @@map("profile")
+model Profile {
+  profile_ID       Int              @id @default(autoincrement())
+  fullname         String
+  roleId           Int?
+  highestDegree    String
+  isTest           Boolean          @default(false)
+  educationhistory Json?
+  yearofexperience Int?
+  profexperience   Json?
+  skills           String?
+  resumeid         Int?
+  careerplanid     Int?
+  Skills           Profile_Skills[]
+  dreamRole        Role?            @relation(fields: [roleId], references: [roleId])
+  User             User?
+  resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
 
+  @@map("profile")
 }
 
-model Profile_Skills{
-  id Int @id @default(autoincrement())
-  Profile  Profile @relation(fields: [profileId], references: [profile_ID])
+model Profile_Skills {
+  id        Int     @id @default(autoincrement())
   profileId Int
-  Skills Skill  @relation(fields: [skillId], references: [skillId])
-  skillId Int
-  @@unique([profileId, skillId])
+  skillId   Int
+  Profile   Profile @relation(fields: [profileId], references: [profile_ID])
+  Skills    Skill   @relation(fields: [skillId], references: [skillId])
 
+  @@unique([profileId, skillId])
 }
 
 model User {
-  id        Int     @id
-  username  String? @db.VarChar(255)
-  useremail String? @db.VarChar(255)
-  profile Profile? @relation(fields : [profile_ID], references: [profile_ID])
-  profile_ID Int? @unique
-
-  @@ignore
+  id         Int      @id @default(autoincrement())
+  username   String?  @db.VarChar(255)
+  useremail  String?  @db.VarChar(255)
+  profile_ID Int?     @unique
+  clerkId    String   @unique
+  profile    Profile? @relation(fields: [profile_ID], references: [profile_ID])
 
   @@map("userinfo")
+}
+
+model Resume {
+  resumeid Int       @id @default(autoincrement())
+  rawtext  String    @db.Text
+  profiles Profile[]
+
+  @@map("resumes")
 }

@@ -17,12 +17,20 @@ type Experience = {
   years: number,
   bullets: Array<string>,
 }
+type EducationEntry = {
+  school: string,
+  degree: string,
+  dateRange: string,
+  gpa?: string,
+}
 export interface parsed_resume{
   name?: string;
   email?: string;
   skills?: Array<string>;
   education?: string;
+  educationHistory?: Array<EducationEntry>;
   experiences?: Array<Experience> ;
+  rawText?: string;
   success:boolean;
   error_msg?:string;
 }
@@ -76,6 +84,15 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
         skills: z.array(z.string()).describe("List of code frameworks, languages, systems, and hard [id] found."),
         education: z.string().describe("Candidate highest level of education, use (B.S or M.S or phD, or other)"),
 
+        educationHistory: z.array(
+            z.object({
+              school: z.string().describe("The name of the school or university"),
+              degree: z.string().describe("The degree and field of study, e.g. B.S. Computer Science"),
+              dateRange: z.string().describe("The attendance date range, e.g. 2019 - 2023"),
+              gpa: z.string().optional().describe("GPA if listed on the resume")
+            })
+        ).describe("Every education entry found on the resume"),
+
         experience: z.array(
             z.object({
               company: z.string().describe("The name of the company or organization"),
@@ -103,9 +120,12 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
 
     const resume:parsed_resume = {
       name: object.name,
+      email: object.email,
       skills: object.skills,
       education: object.education,
+      educationHistory: object.educationHistory,
       experiences: experiences,
+      rawText: unifiedText,
       success: true,
     }
 

@@ -9,6 +9,8 @@ import {getSkillByName, getSkillsList} from "@/services/skills"; // Imports your
  * @swagger
  * /api/skills/{name}:
  *   get:
+ *     tags:
+ *       - Skills
  *     summary: List skills or look up a single skill by name
  *     description:
  *       With no `name` field, returns a list of skills from our AWS RDS

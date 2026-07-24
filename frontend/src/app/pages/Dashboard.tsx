@@ -18,6 +18,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const userData = {
     name: 'Alex Chen',
     email: 'alex.chen@example.com',
+    role: 'Backend Engineer',
     location: 'San Francisco, CA',
     skills: userSkills,
     yearsOfExperience: 5,
@@ -26,11 +27,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       'Built React-based dashboard used by 50K+ users',
       'Reduced API response time by 60% through optimization'
     ],
-    targetRole: {
-      current: 'Backend Engineer',
-      target: 'Machine Learning Engineer',
-      matchScore: 68
-    }
+    targetRole: undefined
   };
 
   return (
@@ -58,39 +55,33 @@ export function Dashboard({ onLogout }: DashboardProps) {
               background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
               height: '100%',
               width: '118px',
-              transform: viewMode === 'landscape' ? 'translateX(0)' : viewMode === 'agent' ? 'translateX(120px)' : 'translateX(240px)',
+              transform: viewMode === 'landscape' ? 'translateX(0)' : viewMode === 'agent' ? 'translateX(126px)' : 'translateX(252px)',
               zIndex: 0,
             }}
           />
 
           <button
             onClick={() => setViewMode('landscape')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-300 relative z-10"
-            style={{
-              color: viewMode === 'landscape' ? '#ffffff' : '#55371e',
-            }}
+            className="w-[118px] flex items-center justify-center gap-2 py-2 rounded-lg transition-colors duration-300 relative z-10"
+            style={{ color: viewMode === 'landscape' ? '#ffffff' : '#55371e' }}
           >
-            <Map className="w-4 h-4" />
+            <Map className="w-4 h-4 flex-shrink-0" />
             <span className="text-sm font-medium">Landscape</span>
           </button>
           <button
             onClick={() => setViewMode('agent')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-300 relative z-10"
-            style={{
-              color: viewMode === 'agent' ? '#ffffff' : '#55371e',
-            }}
+            className="w-[118px] flex items-center justify-center gap-2 py-2 rounded-lg transition-colors duration-300 relative z-10"
+            style={{ color: viewMode === 'agent' ? '#ffffff' : '#55371e' }}
           >
-            <Bot className="w-4 h-4" />
+            <Bot className="w-4 h-4 flex-shrink-0" />
             <span className="text-sm font-medium">Agent</span>
           </button>
           <button
             onClick={() => setViewMode('grind')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-300 relative z-10"
-            style={{
-              color: viewMode === 'grind' ? '#ffffff' : '#55371e',
-            }}
+            className="w-[118px] flex items-center justify-center gap-2 py-2 rounded-lg transition-colors duration-300 relative z-10"
+            style={{ color: viewMode === 'grind' ? '#ffffff' : '#55371e' }}
           >
-            <GraduationCap className="w-4 h-4" />
+            <GraduationCap className="w-4 h-4 flex-shrink-0" />
             <span className="text-sm font-medium">Grind</span>
           </button>
 
@@ -127,7 +118,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
             animation: 'fadeIn 0.4s ease-out',
           }}
         >
-          <GrindPage targetRole={userData.targetRole.target} userSkills={userData.skills} />
+          <GrindPage targetRole={userData.targetRole?.target ?? ''} userSkills={userData.skills} />
         </div>
       ) : (
         // Landscape Mode - Grid Layout
