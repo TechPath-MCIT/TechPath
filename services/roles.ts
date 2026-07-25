@@ -52,6 +52,26 @@ export async function getRoleSkills(roleId: number) {
 }
 
 /**
+ * Fetches a role's hiring industries with their share, sorted by share
+ * descending so the most common industry comes first.
+ */
+export async function getRoleIndustries(roleId: number) {
+  const rows = await prisma.role_industry.findMany({
+    where: {
+      Role_ID: roleId,
+    },
+    orderBy: {
+      share: 'desc',
+    },
+  });
+
+  return rows.map((row) => ({
+    industry: row.industry,
+    share: row.share,
+  }));
+}
+
+/**
  * Inserts a brand new tracking role record down into AWS RDS
 
 export async function createNewRole(title: string) {
