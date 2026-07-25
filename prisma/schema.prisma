@@ -75,12 +75,14 @@ model role_industry {
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model role_skills {
-  Role_ID  Int?   @map("Role ID")
-  Skill_ID Int?   @map("Skill ID")
-  count    Float?
-  id       Int    @id @default(autoincrement())
-  roles    Role?  @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
-  skills   Skill? @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
+  Role_ID   Int?      @map("Role ID")
+  Skill_ID  Int?      @map("Skill ID")
+  count     Float?
+  id        Int       @id @default(autoincrement())
+  queryDate DateTime? @db.Date
+  videoid   String?   @db.VarChar(255)
+  roles     Role?     @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
+  skills    Skill?    @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model Profile {
@@ -96,9 +98,9 @@ model Profile {
   resumeid         Int?
   careerplanid     Int?
   Skills           Profile_Skills[]
+  resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
   dreamRole        Role?            @relation(fields: [roleId], references: [roleId])
   User             User?
-  resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
 
   @@map("profile")
 }
@@ -126,7 +128,7 @@ model User {
 
 model Resume {
   resumeid Int       @id @default(autoincrement())
-  rawtext  String    @db.Text
+  rawtext  String
   profiles Profile[]
 
   @@map("resumes")

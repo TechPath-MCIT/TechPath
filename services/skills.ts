@@ -22,7 +22,7 @@ export async function getSkillsList(limit: number = 10) {
 export async function getSkillById(skillId: number) {
     return prisma.skill.findUnique({
         where: {
-            skillId: skillId, // Uses the mapped 'Role ID' primary key
+            skillId: skillId, // Uses the mapped 'skill ID' primary key
         },
     });
 }
