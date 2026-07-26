@@ -72,7 +72,7 @@ export default async function WorkspaceLayout({
       typeof currentRole === "string"
         ? currentRole
         : "Not specified",
-    location: "Not specified",
+    location: profile.location ?? "Not specified",
     skills: profile.skills
       ? profile.skills
           .split(",")

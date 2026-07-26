@@ -173,6 +173,37 @@ export default function LandscapeContainer({
     profile.setTargetRole(targetRole);
   }
 
+  async function saveLocation(location: string): Promise<void> {
+    const response = await fetch(
+      `/api/profiles/${profile.profileId}/location`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ location }),
+      },
+    );
+
+    const body: unknown = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Failed to save location.";
+
+      throw new Error(message);
+    }
+
+    profile.setLocation(location);
+  }
+
   return (
     <div
       className="grid grid-cols-12 gap-6 p-6"
@@ -190,6 +221,7 @@ export default function LandscapeContainer({
           targetRole={targetRole}
           onLoadRoles={loadRoles}
           onSetTargetRole={saveTargetRole}
+          onSetLocation={saveLocation}
         />
       </div>
 

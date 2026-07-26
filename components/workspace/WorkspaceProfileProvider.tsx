@@ -27,6 +27,7 @@ export type WorkspaceProfile = {
 
 type WorkspaceProfileContextValue = WorkspaceProfile & {
   setTargetRole: (targetRole: TargetRole | null) => void;
+  setLocation: (location: string) => void;
 };
 
 type WorkspaceProfileProviderProps = {
@@ -44,14 +45,17 @@ export function WorkspaceProfileProvider({
   const [targetRole, setTargetRole] = useState<TargetRole | null>(
     profile.targetRole,
   );
+  const [location, setLocation] = useState<string>(profile.location);
 
   const value = useMemo(
     () => ({
       ...profile,
       targetRole,
       setTargetRole,
+      location,
+      setLocation,
     }),
-    [profile, targetRole],
+    [profile, targetRole, location],
   );
 
   return (
