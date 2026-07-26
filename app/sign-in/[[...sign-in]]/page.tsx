@@ -16,6 +16,11 @@ export default async function SignInPage() {
 
       <div className="relative z-10 w-full max-w-md">
         <SignIn
+          path="/sign-in"
+          routing="path"
+          signInUrl="/sign-in"
+          withSignUp
+          transferable
           fallbackRedirectUrl="/api/users/sync"
           signUpFallbackRedirectUrl="/api/users/sync"
           appearance={{

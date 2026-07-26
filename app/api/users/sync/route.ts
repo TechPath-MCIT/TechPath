@@ -35,11 +35,11 @@ export async function GET() {
         redirect('/sign-in');
     }
 
-    await users.syncUserFromClerk({
+    const syncedUser = await users.syncUserFromClerk({
         clerkId: user.id,
         username: user.username ?? user.firstName ?? null,
         useremail: user.primaryEmailAddress?.emailAddress ?? null,
     });
 
-    redirect('/');
+    redirect(syncedUser.profile_ID ? "/landscape" : "/resume-upload");
 }
