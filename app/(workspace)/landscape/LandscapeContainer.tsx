@@ -4,7 +4,10 @@ import {
   UserProfile,
   type RoleOption,
 } from "@/ui/figma/generated/components/UserProfile";
-import { JobLandscapeNew } from "@/ui/figma/generated/components/JobLandscapeNew";
+import {
+  JobLandscapeNew,
+  type LandscapeRole,
+} from "@/ui/figma/generated/components/JobLandscapeNew";
 import { useWorkspaceProfile } from "@/components/workspace/WorkspaceProfileProvider";
 
 type RolesApiResponse = {
@@ -16,7 +19,13 @@ type RolesApiResponse = {
   error?: string;
 };
 
-export default function LandscapeContainer() {
+type LandscapeContainerProps = {
+  roles: LandscapeRole[];
+};
+
+export default function LandscapeContainer({
+  roles,
+}: LandscapeContainerProps) {
   const profile = useWorkspaceProfile();
 
   const targetRole = profile.targetRole
@@ -106,7 +115,10 @@ export default function LandscapeContainer() {
       </div>
 
       <div className="col-span-9 min-h-0">
-        <JobLandscapeNew />
+        <JobLandscapeNew
+          roles={roles}
+          targetRoleId={profile.targetRole?.roleId ?? null}
+        />
       </div>
     </div>
   );

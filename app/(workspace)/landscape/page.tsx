@@ -1,24 +1,29 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import * as users from "@/services/users";
+import { getRolesList } from "@/services/roles";
 import LandscapeContainer from "./LandscapeContainer";
+import type { LandscapeRole } from "@/ui/figma/generated/components/JobLandscapeNew";
 
 export default async function LandscapePage() {
-  const { userId } = await auth();
+  const databaseRoles = await getRolesList(1000);
 
-  if (!userId) {
-    redirect("/sign-in");
-  }
+  const roles: LandscapeRole[] = databaseRoles
+    .flatMap((role) =>
+      role.role
+        ? [
+            {
+              roleId: role.roleId,
+              name: role.role,
+              entrySalary: role.entrySalary,
+              salaryOutlook: role.salaryOutlook,
+              jobSatisfaction: role.jobSatisfaction,
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, "en", {
+        sensitivity: "base",
+      }),
+    );
 
-  const user = await users.getUserByClerkId(userId);
-
-  if (!user?.profile_ID) {
-    redirect("/resume-upload");
-  }
-
-  return (
-    <main className="min-h-screen">
-      <LandscapeContainer />
-    </main>
-  );
+  return <LandscapeContainer roles={roles} />;
 }
