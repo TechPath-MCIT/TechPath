@@ -1,23 +1,89 @@
 "use client";
 
-import { UserProfile } from "@/ui/figma/generated/components/UserProfile";
+import {
+  UserProfile,
+  type RoleOption,
+} from "@/ui/figma/generated/components/UserProfile";
 import { JobLandscapeNew } from "@/ui/figma/generated/components/JobLandscapeNew";
-import { userSkills } from "@/ui/figma/generated/data/jobData";
+import { useWorkspaceProfile } from "@/components/workspace/WorkspaceProfileProvider";
+
+type RolesApiResponse = {
+  success: boolean;
+  data?: Array<{
+    roleId: number;
+    role: string | null;
+  }>;
+  error?: string;
+};
 
 export default function LandscapeContainer() {
-  const userData = {
-    name: "Alex Chen",
-    email: "alex.chen@example.com",
-    role: "Backend Engineer",
-    location: "San Francisco, CA",
-    skills: userSkills,
-    yearsOfExperience: 5,
-    experience: [
-      "Led development of ML pipeline processing 10M+ records daily",
-      "Built React-based dashboard used by 50K+ users",
-      "Reduced API response time by 60% through optimization",
-    ],
-  };
+  const profile = useWorkspaceProfile();
+
+  const targetRole = profile.targetRole
+    ? {
+        current: profile.currentRole,
+        target: profile.targetRole.name,
+        matchScore: 0,
+      }
+    : undefined;
+
+  async function loadRoles(): Promise<RoleOption[]> {
+    const response = await fetch("/api/roles", {
+      cache: "no-store",
+    });
+
+    const body = (await response.json()) as RolesApiResponse;
+
+    if (!response.ok || !body.success) {
+      throw new Error(body.error ?? "Failed to load roles.");
+    }
+
+    return (body.data ?? []).flatMap((role) =>
+      role.role
+        ? [
+            {
+              roleId: role.roleId,
+              name: role.role,
+            },
+          ]
+        : [],
+    );
+  }
+
+  async function saveTargetRole(
+    targetRole: RoleOption,
+  ): Promise<void> {
+    const response = await fetch(
+      `/api/profiles/${profile.profileId}/role`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          roleId: targetRole.roleId,
+        }),
+      },
+    );
+
+    const body: unknown = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok) {
+      const message =
+        typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Failed to save target role.";
+
+      throw new Error(message);
+    }
+
+    profile.setTargetRole(targetRole);
+  }
 
   return (
     <div
@@ -25,7 +91,18 @@ export default function LandscapeContainer() {
       style={{ height: "calc(100vh - 72px)" }}
     >
       <div className="col-span-3 min-h-0">
-        <UserProfile {...userData} />
+        <UserProfile
+          name={profile.name}
+          email={profile.email}
+          role={profile.currentRole}
+          location={profile.location}
+          skills={profile.skills}
+          yearsOfExperience={profile.yearsOfExperience}
+          experience={profile.experience}
+          targetRole={targetRole}
+          onLoadRoles={loadRoles}
+          onSetTargetRole={saveTargetRole}
+        />
       </div>
 
       <div className="col-span-9 min-h-0">
