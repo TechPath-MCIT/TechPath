@@ -5,7 +5,6 @@ import {
   Briefcase,
   DollarSign,
   Target,
-  TrendingUp,
   X,
 } from "lucide-react";
 
@@ -20,6 +19,9 @@ export type LandscapeRole = {
 type JobLandscapeNewProps = {
   roles: LandscapeRole[];
   targetRoleId: number | null;
+  matchScores: Record<number, number>;
+  matchesLoading: boolean;
+  matchesError: string | null;
 };
 
 function formatSalary(value: number | null) {
@@ -34,6 +36,27 @@ function formatSalary(value: number | null) {
   }).format(value);
 }
 
+function formatSalaryRange(
+  entrySalary: number | null,
+  salaryOutlook: number | null,
+) {
+  if (entrySalary !== null && salaryOutlook !== null) {
+    return `${formatSalary(entrySalary)} – ${formatSalary(
+      salaryOutlook,
+    )}`;
+  }
+
+  if (entrySalary !== null) {
+    return `From ${formatSalary(entrySalary)}`;
+  }
+
+  if (salaryOutlook !== null) {
+    return `Up to ${formatSalary(salaryOutlook)}`;
+  }
+
+  return "Not available";
+}
+
 function formatMetric(value: number | null) {
   return value === null ? "Not available" : value.toLocaleString();
 }
@@ -41,9 +64,19 @@ function formatMetric(value: number | null) {
 export function JobLandscapeNew({
   roles,
   targetRoleId,
+  matchScores,
+  matchesLoading,
+  matchesError,
 }: JobLandscapeNewProps) {
   const [selectedRole, setSelectedRole] =
     useState<LandscapeRole | null>(null);
+
+  const selectedRoleScore = selectedRole
+  ? matchScores[selectedRole.roleId]
+  : undefined;
+
+  const hasSelectedRoleScore =
+    typeof selectedRoleScore === "number";
 
   return (
     <div className="relative flex h-full flex-col rounded-2xl bg-white shadow-md">
@@ -61,12 +94,27 @@ export function JobLandscapeNew({
             style={{ color: "#55371e" }}
           >
             {roles.length} roles
+            
           </span>
         </div>
+
+        {matchesError && (
+          <p
+            className="mb-4 rounded-lg px-3 py-2 text-sm"
+            style={{
+              color: "#b91c1c",
+              backgroundColor: "#fef2f2",
+            }}
+          >
+            {matchesError}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {roles.map((role) => {
             const isTarget = role.roleId === targetRoleId;
+            const score = matchScores[role.roleId];
+            const hasScore = typeof score === "number";
 
             return (
               <button
@@ -94,6 +142,41 @@ export function JobLandscapeNew({
                     style={{ color: "#15100c" }}
                   >
                     {role.name}
+                  </span>
+                </div>
+
+                <div className="mb-2 flex items-center gap-2">
+                  <div
+                    className="h-1.5 flex-1 overflow-hidden rounded-full"
+                    style={{
+                      backgroundColor: "rgba(184, 226, 212, 0.3)",
+                    }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: hasScore ? `${score}%` : "0%",
+                        background:
+                          !hasScore
+                            ? "transparent"
+                            : score >= 70
+                              ? "linear-gradient(90deg, #02746f, #b8e2d4)"
+                              : score >= 40
+                                ? "linear-gradient(90deg, #fdd357, #b8e2d4)"
+                                : "linear-gradient(90deg, #ef4444, #fdd357)",
+                      }}
+                    />
+                  </div>
+
+                  <span
+                    className="w-8 text-right text-xs font-semibold"
+                    style={{ color: "#02746f" }}
+                  >
+                    {matchesLoading
+                      ? "..."
+                      : hasScore
+                        ? `${score}%`
+                        : "—"}
                   </span>
                 </div>
 
@@ -159,6 +242,51 @@ export function JobLandscapeNew({
                 </button>
               </div>
 
+              <div
+                className="mb-6 rounded-lg p-4"
+                style={{
+                  backgroundColor: "rgba(184, 226, 212, 0.2)",
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#15100c" }}
+                  >
+                    Overall Match Score
+                  </span>
+
+                  <span
+                    className="text-2xl font-bold"
+                    style={{ color: "#02746f" }}
+                  >
+                    {matchesLoading
+                      ? "..."
+                      : hasSelectedRoleScore
+                        ? `${selectedRoleScore}%`
+                        : "—"}
+                  </span>
+                </div>
+
+                <div
+                  className="h-3 w-full overflow-hidden rounded-full"
+                  style={{
+                    backgroundColor: "rgba(184, 226, 212, 0.3)",
+                  }}
+                >
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: hasSelectedRoleScore
+                        ? `${selectedRoleScore}%`
+                        : "0%",
+                      background:
+                        "linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)",
+                    }}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <div
                   className="flex items-center gap-3 rounded-lg p-4"
@@ -170,44 +298,23 @@ export function JobLandscapeNew({
                     className="h-5 w-5"
                     style={{ color: "#02746f" }}
                   />
-                  <div>
-                    <div
-                      className="text-xs font-semibold"
-                      style={{ color: "#55371e" }}
-                    >
-                      Entry salary
-                    </div>
-                    <div
-                      className="text-lg font-bold"
-                      style={{ color: "#15100c" }}
-                    >
-                      {formatSalary(selectedRole.entrySalary)}
-                    </div>
-                  </div>
-                </div>
 
-                <div
-                  className="flex items-center gap-3 rounded-lg p-4"
-                  style={{
-                    backgroundColor: "rgba(184, 226, 212, 0.2)",
-                  }}
-                >
-                  <TrendingUp
-                    className="h-5 w-5"
-                    style={{ color: "#02746f" }}
-                  />
                   <div>
                     <div
                       className="text-xs font-semibold"
                       style={{ color: "#55371e" }}
                     >
-                      Salary outlook
+                      Salary Range
                     </div>
+
                     <div
                       className="text-lg font-bold"
                       style={{ color: "#15100c" }}
                     >
-                      {formatMetric(selectedRole.salaryOutlook)}
+                      {formatSalaryRange(
+                        selectedRole.entrySalary,
+                        selectedRole.salaryOutlook,
+                      )}
                     </div>
                   </div>
                 </div>

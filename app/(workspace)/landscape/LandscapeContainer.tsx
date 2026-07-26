@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   UserProfile,
   type RoleOption,
@@ -23,10 +25,87 @@ type LandscapeContainerProps = {
   roles: LandscapeRole[];
 };
 
+type MatchApiResponse = {
+  success: boolean;
+  data?: Array<{
+    roleId: number;
+    role: string | null;
+    score: number;
+  }>;
+  error?: string;
+};
+
 export default function LandscapeContainer({
   roles,
 }: LandscapeContainerProps) {
   const profile = useWorkspaceProfile();
+
+  const [matchScores, setMatchScores] = useState<
+  Record<number, number>
+  >({});
+  const [matchesLoading, setMatchesLoading] = useState(true);
+  const [matchesError, setMatchesError] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadMatchScores() {
+      setMatchesLoading(true);
+      setMatchesError(null);
+
+      try {
+        const response = await fetch(
+          `/api/profiles/${profile.profileId}/match`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
+          },
+        );
+
+        const body = (await response.json()) as MatchApiResponse;
+
+        if (!response.ok || !body.success) {
+          throw new Error(
+            body.error ?? "Failed to calculate role matches.",
+          );
+        }
+
+        const scores = Object.fromEntries(
+          (body.data ?? []).map((match) => [
+            match.roleId,
+            match.score,
+          ]),
+        );
+
+        setMatchScores(scores);
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setMatchesError(
+          error instanceof Error
+            ? error.message
+            : "Failed to calculate role matches.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setMatchesLoading(false);
+        }
+      }
+    }
+
+    void loadMatchScores();
+
+    return () => {
+      controller.abort();
+    };
+  }, [profile.profileId]);
 
   const targetRole = profile.targetRole
     ? {
@@ -118,6 +197,9 @@ export default function LandscapeContainer({
         <JobLandscapeNew
           roles={roles}
           targetRoleId={profile.targetRole?.roleId ?? null}
+          matchScores={matchScores}
+          matchesLoading={matchesLoading}
+          matchesError={matchesError}
         />
       </div>
     </div>
