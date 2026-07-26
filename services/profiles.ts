@@ -39,6 +39,18 @@ export async function setDreamRole(profile_ID: number, roleId: number) {
     });
 }
 
+/**
+ * Sets a profile's location.
+ * @param profile_ID the profile to update
+ * @param location the new location string
+ */
+export async function setProfileLocation(profile_ID: number, location: string) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { location },
+    });
+}
+
 
 /**
  * Maps parsed resume fields onto the Profile columns shared by create and update.
@@ -56,6 +68,7 @@ function resumeToProfileData(resume: parsed_resume, test: boolean, resumeId: num
         profexperience: resume.experiences ?? Prisma.JsonNull,
         skills: resume.skills?.length ? resume.skills.join(", ") : null,
         resumeid: resumeId,
+        location: resume.location || null,
     };
 }
 
