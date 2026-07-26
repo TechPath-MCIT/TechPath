@@ -155,7 +155,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
             animation: 'fadeIn 0.4s ease-out',
           }}
         >
-          <GrindPage targetRole={userData.targetRole?.target ?? ''} userSkills={userData.skills} />
+        <GrindPage
+          targetRole={userData.targetRole?.target ?? ""}
+          resources={[]}
+          isLoadingResources={false}
+          resourcesError={null}
+        />
         </div>
       ) : (
         // Landscape Mode - Grid Layout

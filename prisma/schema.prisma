@@ -20,22 +20,23 @@ model Role {
   webFrameworkImportance   Float?          @map("WebFrameWork Importance")
   databaseImportance       Float?          @map("Database Importance")
   codingLanguageImportance Float?          @map("Coding Language Importance")
+  mainResponsibilities     Json?           @map("main_responsibilities")
+  positionInField          String?         @map("position_in_field")
+  typicalJobTitles         Json?           @map("typical_job_titles")
   profiles                 Profile[]
   role_industry            role_industry[]
   role_skills              role_skills[]
-  mainResponsibilities     Json?           @map("main_responsibilities")
-  positionInField          String?         @map("position_in_field")
-  typicalJobTitles         Json?           @map("typical_job_titles") 
 
   @@map("roles")
 }
 
 model Skill {
-  skillId     Int              @id @map("id")
-  name        String?          @map("name")
-  type        String?          @map("type")
-  profiles    Profile_Skills[]
-  role_skills role_skills[]
+  skillId         Int               @id @map("id")
+  name            String?           @map("name")
+  type            String?           @map("type")
+  profiles        Profile_Skills[]
+  resource_skills resource_skills[]
+  role_skills     role_skills[]
 
   @@map("skills")
 }
@@ -62,7 +63,9 @@ model courses {
   prerequisites  Json?
   course_units   Decimal?         @db.Decimal(3, 1)
   creators       Json?
+  resource_id    String           @unique @db.Uuid
   course_reviews course_reviews[]
+  resources      resources        @relation(fields: [resource_id], references: [resource_id], onUpdate: NoAction, map: "courses_resource_fk")
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -100,6 +103,7 @@ model Profile {
   skills           String?
   resumeid         Int?
   careerplanid     Int?
+  location         String?
   Skills           Profile_Skills[]
   resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
   dreamRole        Role?            @relation(fields: [roleId], references: [roleId])
@@ -135,4 +139,39 @@ model Resume {
   profiles Profile[]
 
   @@map("resumes")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model resource_skills {
+  resource_id     String    @db.Uuid
+  skill_id        Int
+  coverage_weight Decimal   @default(1.000) @db.Decimal(4, 3)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  resources       resources @relation(fields: [resource_id], references: [resource_id], onDelete: Cascade, onUpdate: NoAction, map: "resource_skills_resource_fk")
+  skills          Skill     @relation(fields: [skill_id], references: [skillId], onUpdate: NoAction, map: "resource_skills_skill_fk")
+
+  @@id([resource_id, skill_id])
+  @@index([skill_id])
+}
+
+model resources {
+  resource_id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource_type      String
+  name               String
+  description        String?
+  source             String?
+  source_url         String?
+  pricing_type       String            @default("unknown")
+  cost_amount        Decimal?          @db.Decimal(10, 2)
+  cost_currency      String?           @db.Char(3)
+  pricing_note       String?
+  duration_minutes   Int?
+  publication_status String            @default("published")
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  courses            courses?
+  resource_skills    resource_skills[]
+
+  @@index([source])
+  @@index([resource_type, publication_status], map: "resources_type_status_idx")
 }
