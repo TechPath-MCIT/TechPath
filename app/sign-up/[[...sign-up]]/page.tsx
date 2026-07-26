@@ -1,9 +1,5 @@
-import { SignUp } from "@clerk/nextjs";
+import { redirect } from "next/navigation";
 
 export default function SignUpPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-      <SignUp fallbackRedirectUrl="/api/users/sync" />
-    </div>
-  );
+  redirect("/sign-in");
 }

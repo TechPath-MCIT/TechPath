@@ -76,6 +76,14 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
       return failure;
     }
 
+    if (!unifiedText.trim()) {
+      return {
+        success: false,
+        error_msg:
+          "No readable text was found in this resume. Please upload a text-based PDF.",
+      };
+    }
+
     const { object } = await generateObject({
       model: google('gemini-2.5-flash'),
       schema: z.object({
@@ -133,17 +141,14 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
     return resume;
 
   }
-  catch (error) {
-    const failure = {
-      success: false,
-      error_msg: 'Error while retrieving document',
-    }
 
-    return failure;
+  catch (error) {
+    console.error("Resume parsing failed:", error);
+
+    return {
+      success: false,
+      error_msg: "Unable to process this resume. Please try another PDF.",
+    };
   }
 
 }
-
-
-
-
