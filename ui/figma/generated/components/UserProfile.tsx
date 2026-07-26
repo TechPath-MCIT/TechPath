@@ -40,8 +40,21 @@ interface UserProfileProps {
     matchScore: number;
   };
   avatarUrl?: string;
-  onSetTargetRole?: (target: string) => void;
+  onLoadRoles?: () => Promise<RoleOption[]>;
+  onSetTargetRole?: (target: RoleOption) => Promise<void>;
 }
+
+export type RoleOption = {
+  roleId: number;
+  name: string;
+};
+
+const figmaPreviewRoles: RoleOption[] = jobTaxonomyData.map(
+  (role, index) => ({
+    roleId: index + 1,
+    name: role.L4_job_role,
+  }),
+);
 
 export function UserProfile({
   name,
@@ -53,7 +66,8 @@ export function UserProfile({
   experience,
   targetRole,
   avatarUrl,
-  onSetTargetRole,
+  onLoadRoles = async () => figmaPreviewRoles,
+  onSetTargetRole = async () => {},
 }: UserProfileProps) {
   const [userLocation, setUserLocation] = useState(location);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -77,6 +91,9 @@ export function UserProfile({
 
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [isComputingGoal, setIsComputingGoal] = useState(false);
+  const [availableRoles, setAvailableRoles] = useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
   const [tempTargetRole, setTempTargetRole] = useState(targetRole?.target || '');
   const [savedTarget, setSavedTarget] = useState(targetRole?.target || '');
 
@@ -100,16 +117,67 @@ export function UserProfile({
       )
     : 0;
 
+    const loadAvailableRoles = async () => {
+      if (availableRoles.length > 0 || rolesLoading) {
+        return;
+      }
 
-  const handleSaveGoal = () => {
-    if (tempTargetRole) {
-      setIsComputingGoal(true);
-      setTimeout(() => {
-        setSavedTarget(tempTargetRole);
-        onSetTargetRole?.(tempTargetRole);
-        setIsEditingGoal(false);
-        setIsComputingGoal(false);
-      }, 1400);
+      setRolesLoading(true);
+      setGoalError(null);
+
+      try {
+        const roles = await onLoadRoles();
+        setAvailableRoles(roles);
+      } catch (error) {
+        setGoalError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load roles.",
+        );
+      } finally {
+        setRolesLoading(false);
+      }
+    };
+
+  const handleEditGoal = async () => {
+    await loadAvailableRoles();
+    setTempTargetRole(savedTarget);
+    setIsEditingGoal(true);
+  };
+
+  useEffect(() => {
+    if (!savedTarget) {
+      void loadAvailableRoles();
+    }
+    // Initial target-role setup only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSaveGoal = async () => {
+    const selectedRole = availableRoles.find(
+      (role) => role.name === tempTargetRole,
+    );
+
+    if (!selectedRole) {
+      setGoalError("Please select a target role.");
+      return;
+    }
+
+    setIsComputingGoal(true);
+    setGoalError(null);
+
+    try {
+      await onSetTargetRole(selectedRole);
+      setSavedTarget(selectedRole.name);
+      setIsEditingGoal(false);
+    } catch (error) {
+      setGoalError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save target role.",
+      );
+    } finally {
+      setIsComputingGoal(false);
     }
   };
 
@@ -240,9 +308,18 @@ export function UserProfile({
                 style={{ borderColor: '#02746f', color: tempTargetRole ? '#15100c' : '#9ca3af', backgroundColor: '#fff' }}
               >
                 <option value="">Select target role…</option>
-                {jobTaxonomyData.map(j => (
-                  <option key={j.node_id} value={j.L4_job_role}>{j.L4_job_role}</option>
-                ))}
+                {rolesLoading ? (
+                  <option disabled>Loading roles…</option>
+                ) : (
+                  availableRoles.map((role) => (
+                    <option
+                      key={role.roleId}
+                      value={role.name}
+                    >
+                      {role.name}
+                    </option>
+                  ))
+                )}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: '#02746f' }} />
             </div>
@@ -284,7 +361,7 @@ export function UserProfile({
                 Skills for {savedTarget}
               </h3>
               <button
-                onClick={() => { setTempTargetRole(savedTarget); setIsEditingGoal(true); }}
+                onClick={() => { void handleEditGoal(); }}
                 className="p-1 hover:bg-stone-100 rounded transition-colors"
               >
                 <Edit2 className="w-3 h-3" style={{ color: '#55371e' }} />

@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
-    const roles = await getRolesList(10);
+    const roles = await getRolesList(1000);
     return NextResponse.json({ success: true, count: roles.length, data: roles }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

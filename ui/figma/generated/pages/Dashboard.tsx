@@ -3,7 +3,11 @@ import { UserProfile } from '../components/UserProfile';
 import { JobLandscapeNew } from '../components/JobLandscapeNew';
 import { AgentChat } from '../components/AgentChat';
 import { GrindPage } from '../components/GrindPage';
-import { userSkills } from '../data/jobData';
+import {
+  calculateSkillMatch,
+  jobTaxonomyData,
+  userSkills,
+} from "../data/jobData";
 import { LogOut, Map, Bot, GraduationCap } from 'lucide-react';
 
 interface DashboardProps {
@@ -29,6 +33,25 @@ interface DashboardUserData {
 
 export function Dashboard({ onLogout }: DashboardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('landscape');
+
+  const previewRoles = jobTaxonomyData.map((job, index) => ({
+    roleId: index,
+    name: job.L4_job_role,
+    entrySalary: null,
+    salaryOutlook: null,
+    jobSatisfaction: null,
+    topSkills: [],
+    mainResponsibilities: [],
+    positionInField: null,
+    typicalJobTitles: [],
+  }));
+
+  const previewMatchScores = Object.fromEntries(
+    jobTaxonomyData.map((job, index) => [
+      index,
+      calculateSkillMatch(job.core_skills, userSkills),
+    ]),
+  );
 
   const userData: DashboardUserData = {
     name: 'Alex Chen',
@@ -150,7 +173,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
           {/* Landscape View */}
           <div className="col-span-9">
-            <JobLandscapeNew />
+            <JobLandscapeNew
+              roles={previewRoles}
+              targetRoleId={null}
+              matchScores={previewMatchScores}
+              matchesLoading={false}
+              matchesError={null}
+            />
           </div>
         </div>
       )}
