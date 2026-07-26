@@ -3,18 +3,20 @@ import { Upload, FileText, X, ArrowLeft, ArrowRight, Sparkles } from 'lucide-rea
 import { AnimatedBackground } from '../components/AnimatedBackground';
 
 interface ResumeUploadPageProps {
-  onContinue: () => void;
+  onSubmit: (file: File) => Promise<void>;
   onLogout: () => void;
 }
 
-export function ResumeUploadPage({ onContinue, onLogout }: ResumeUploadPageProps) {
+export function ResumeUploadPage({ onSubmit, onLogout }: ResumeUploadPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
-    if (f.type === 'application/pdf') {
+    if (f.type === "application/pdf") {
+      setUploadError(null);
       setFile(f);
     }
   };
@@ -33,13 +35,21 @@ export function ResumeUploadPage({ onContinue, onLogout }: ResumeUploadPageProps
 
   const onDragLeave = () => setIsDragging(false);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!file) return;
+
     setUploading(true);
-    setTimeout(() => {
+    setUploadError(null);
+
+    try {
+      await onSubmit(file);
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Failed to upload resume.",
+      );
+    } finally {
       setUploading(false);
-      onContinue();
-    }, 1200);
+    }
   };
 
   return (
@@ -112,7 +122,11 @@ export function ResumeUploadPage({ onContinue, onLogout }: ResumeUploadPageProps
                 onClick={(e) => {
                   e.stopPropagation();
                   setFile(null);
-                  if (inputRef.current) inputRef.current.value = '';
+                  setUploadError(null);
+
+                  if (inputRef.current) {
+                    inputRef.current.value = "";
+                  }
                 }}
                 className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-gray-100"
               >
@@ -145,6 +159,12 @@ export function ResumeUploadPage({ onContinue, onLogout }: ResumeUploadPageProps
             </div>
           )}
         </div>
+
+        {uploadError && (
+          <p className="text-sm mt-3" style={{ color: "#dc2626" }}>
+            {uploadError}
+          </p>
+        )}
 
         {/* Continue Button */}
         <button

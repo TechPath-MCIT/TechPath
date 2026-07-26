@@ -17,7 +17,13 @@ export default function FigmaPreview() {
   if (step === "resume") {
     return (
       <ResumeUploadPage
-        onContinue={() => setStep("dashboard")}
+        onSubmit={async () => {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 1200);
+          });
+
+          setStep("dashboard");
+        }}
         onLogout={() => setStep("login")}
       />
     );
