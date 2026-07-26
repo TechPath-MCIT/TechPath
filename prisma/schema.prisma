@@ -23,6 +23,9 @@ model Role {
   profiles                 Profile[]
   role_industry            role_industry[]
   role_skills              role_skills[]
+  mainResponsibilities     Json?           @map("main_responsibilities")
+  positionInField          String?         @map("position_in_field")
+  typicalJobTitles         Json?           @map("typical_job_titles") 
 
   @@map("roles")
 }

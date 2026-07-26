@@ -14,6 +14,17 @@ export type LandscapeRole = {
   entrySalary: number | null;
   salaryOutlook: number | null;
   jobSatisfaction: number | null;
+
+  topSkills: Array<{
+    skillId: number;
+    name: string;
+    weight: number | null;
+    score: number | null;
+  }>;
+
+  mainResponsibilities: string[];
+  positionInField: string | null;
+  typicalJobTitles: string[];
 };
 
 type JobLandscapeNewProps = {
@@ -287,6 +298,68 @@ export function JobLandscapeNew({
                 </div>
               </div>
 
+              <div className="mb-6">
+                <h3
+                  className="mb-3 font-semibold"
+                  style={{ color: "#15100c" }}
+                >
+                  Detailed Match Score
+                </h3>
+
+                <div className="space-y-3">
+                  {selectedRole.topSkills.map((skill) => {
+                    const importance = Math.round(
+                      (skill.weight ?? 0) * 100,
+                    );
+
+                    return (
+                      <div key={skill.skillId}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span
+                            className="text-sm font-medium"
+                            style={{ color: "#15100c" }}
+                          >
+                            {skill.name}
+                          </span>
+
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: "#55371e" }}
+                          >
+                            {skill.score === null
+                              ? "—"
+                              : `${skill.score}%`}
+                          </span>
+                        </div>
+
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full"
+                          style={{
+                            backgroundColor: "rgba(184, 226, 212, 0.3)",
+                          }}
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${importance}%`,
+                              background:
+                                "linear-gradient(90deg, rgba(2,116,111,0.45), rgba(184,226,212,0.7))",
+                            }}
+                          />
+                        </div>
+
+                        <div
+                          className="mt-1 text-right text-[10px]"
+                          style={{ color: "#8a7462" }}
+                        >
+                          Role importance: {importance}%
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <div
                   className="flex items-center gap-3 rounded-lg p-4"
@@ -337,6 +410,89 @@ export function JobLandscapeNew({
                   </div>
                 </div>
               </div>
+
+              {selectedRole.mainResponsibilities.length > 0 && (
+                <div className="mt-6">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Target
+                      className="h-4 w-4"
+                      style={{ color: "#02746f" }}
+                    />
+                    <h3
+                      className="font-semibold"
+                      style={{ color: "#15100c" }}
+                    >
+                      Main Responsibilities
+                    </h3>
+                  </div>
+
+                  <ul className="space-y-2">
+                    {selectedRole.mainResponsibilities.map(
+                      (responsibility) => (
+                        <li
+                          key={responsibility}
+                          className="flex gap-2 text-sm"
+                          style={{ color: "#55371e" }}
+                        >
+                          <span style={{ color: "#02746f" }}>•</span>
+                          <span>{responsibility}</span>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {selectedRole.positionInField && (
+                <div className="mt-6">
+                  <h3
+                    className="mb-3 font-semibold"
+                    style={{ color: "#15100c" }}
+                  >
+                    Position in Field
+                  </h3>
+
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "#55371e" }}
+                  >
+                    {selectedRole.positionInField}
+                  </p>
+                </div>
+              )}
+
+              {selectedRole.typicalJobTitles.length > 0 && (
+                <div className="mt-6">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Briefcase
+                      className="h-4 w-4"
+                      style={{ color: "#02746f" }}
+                    />
+                    <h3
+                      className="font-semibold"
+                      style={{ color: "#15100c" }}
+                    >
+                      Typical Job Titles
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRole.typicalJobTitles.map((title) => (
+                      <span
+                        key={title}
+                        className="rounded-lg px-3 py-1.5 text-sm"
+                        style={{
+                          backgroundColor: "#f4f1f2",
+                          color: "#15100c",
+                        }}
+                      >
+                        {title}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
           </aside>
         </>

@@ -40,6 +40,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
     entrySalary: null,
     salaryOutlook: null,
     jobSatisfaction: null,
+    topSkills: [],
+    mainResponsibilities: [],
+    positionInField: null,
+    typicalJobTitles: [],
   }));
 
   const previewMatchScores = Object.fromEntries(

@@ -26,6 +26,68 @@ export async function getRoleById(roleId: number) {
 }
 
 /**
+ * 
+ * Fetches top 4 skills of each role, along with their weight, 
+ * and the role's main responsibilities and position in field.
+ */
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+}
+
+export async function getLandscapeRoles() {
+  const roles = await prisma.role.findMany({
+    include: {
+      role_skills: {
+        include: {
+          skills: true,
+        },
+        orderBy: {
+          count: "desc",
+        },
+      },
+    },
+  });
+
+  return roles.flatMap((role) =>
+    role.role
+      ? [
+          {
+            roleId: role.roleId,
+            name: role.role,
+            entrySalary: role.entrySalary,
+            salaryOutlook: role.salaryOutlook,
+            jobSatisfaction: role.jobSatisfaction,
+            mainResponsibilities: toStringArray(
+              role.mainResponsibilities,
+            ),
+            positionInField: role.positionInField,
+            typicalJobTitles: toStringArray(
+              role.typicalJobTitles,
+            ),
+            topSkills: role.role_skills
+              .filter(
+                (item) =>
+                  item.Skill_ID !== null &&
+                  typeof item.skills?.name === "string",
+              )
+              .slice(0, 4)
+              .map((item) => ({
+                skillId: item.Skill_ID as number,
+                name: item.skills!.name as string,
+                weight: item.count,
+                score: null,
+              })),
+          },
+        ]
+      : [],
+  );
+}
+
+/**
  * Fetches a role's skills with their weight, joined with the skill's name.
  * Sorted by weight descending so the most relevant skill comes first.
  */
