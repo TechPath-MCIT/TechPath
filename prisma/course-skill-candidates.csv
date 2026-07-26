@@ -1,0 +1,218 @@
+course_id,course_name,proposed_skill,coverage_weight,existing_skill_id,evidence_source,confidence,review_note
+CIS5030,Algorithms for Big Data,Algorithms,1,,course description,high,Core course focus
+CIS5030,Algorithms for Big Data,Randomized Algorithms,0.9,,course description,high,Explicitly covers randomness
+CIS5030,Algorithms for Big Data,Approximation Algorithms,0.9,,course description,high,Explicitly covers approximation
+CIS5030,Algorithms for Big Data,Big Data,0.7,,course description,high,Algorithms for massive-scale data
+CIS5030,Algorithms for Big Data,Graph Algorithms,0.6,,course description,high,Listed foundational topic
+CIS5050,Software Systems (In Development),Software Systems,1,,course title only,low,No description or reviews; verify against syllabus
+CIS5050,Software Systems (In Development),Systems Design,0.6,,course title only,low,Tentative; verify against syllabus
+CIS5150,Fundamentals of Linear Algebra & Optimization (Math for Machine Learning),Linear Algebra,1,,description and reviews,high,Repeatedly identified as the main mathematical foundation
+CIS5150,Fundamentals of Linear Algebra & Optimization (Math for Machine Learning),Optimization,1,,description and reviews,high,Explicit course focus
+CIS5150,Fundamentals of Linear Algebra & Optimization (Math for Machine Learning),Machine Learning Mathematics,0.8,,course description,high,Mathematical basis for ML
+CIS5150,Fundamentals of Linear Algebra & Optimization (Math for Machine Learning),MATLAB,0.7,2,description and reviews,high,Projects and reviews explicitly mention MATLAB
+CIS5150,Fundamentals of Linear Algebra & Optimization (Math for Machine Learning),Support Vector Machines,0.5,,course description,medium,One application of the course material
+CIS5210,Artificial Intelligence,Artificial Intelligence,1,,description and reviews,high,Primary course subject
+CIS5210,Artificial Intelligence,Search Algorithms,0.9,,description and reviews,high,Major topic repeatedly confirmed in reviews
+CIS5210,Artificial Intelligence,Machine Learning,0.8,,course description,high,Explicit topic
+CIS5210,Artificial Intelligence,Probabilistic Reasoning,0.8,,course description,high,Explicit topic
+CIS5210,Artificial Intelligence,Natural Language Processing,0.6,,course description,high,Explicit topic
+CIS5210,Artificial Intelligence,Python,0.8,10,description and reviews,high,Assignments use Python
+CIS5210,Artificial Intelligence,PyTorch,0.4,,course reviews,medium,Review identifies PyTorch in a later assignment
+CIS5300,Natural Language Processing,Natural Language Processing,1,,description and reviews,high,Primary course subject
+CIS5300,Natural Language Processing,Language Models,0.9,,course reviews,high,Reviews mention N-grams and multiple language model families
+CIS5300,Natural Language Processing,Transformers,0.8,,course reviews,high,Recent reviews explicitly identify Transformer coverage
+CIS5300,Natural Language Processing,Large Language Models,0.7,,course reviews,high,Recent reviews describe growing LLM focus
+CIS5300,Natural Language Processing,Machine Learning,0.7,,description and reviews,high,Core supporting method
+CIS5300,Natural Language Processing,Hugging Face,0.5,,course reviews,medium,Reviews identify hands-on use
+CIS5450,Big Data Analytics,Data Analytics,1,,description and reviews,high,Primary course subject
+CIS5450,Big Data Analytics,Data Wrangling,0.9,,description and reviews,high,Explicit pipeline step
+CIS5450,Big Data Analytics,Distributed Data Processing,0.9,,course description,high,Scalable computation across many nodes
+CIS5450,Big Data Analytics,Apache Spark,0.8,,description and reviews,high,Reviews identify hands-on Spark use
+CIS5450,Big Data Analytics,Machine Learning,0.7,,description and reviews,high,Clustering and classification plus model training
+CIS5450,Big Data Analytics,Python,0.7,10,course reviews,high,Reviews identify Python data tooling
+CIS5470,Software Analysis,C++,0.9,14,review,high,Manually added
+CIS5470,Software Analysis,Software Analysis,1,,course description,high,Primary course subject
+CIS5470,Software Analysis,Software Testing,0.9,,course description,high,Random testing and automated test generation
+CIS5470,Software Analysis,Static Analysis,0.9,,course description,high,Dataflow analysis and type inference
+CIS5470,Software Analysis,Symbolic Execution,0.8,,course description,high,Explicit topic
+CIS5470,Software Analysis,LLVM,0.8,,course description,high,Programming labs use LLVM
+CIS5470,Software Analysis,C++,0.7,14,course description,high,Programming labs use C++
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,C++,0.9,14,review,high,Manually added
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,Wireless Networks,1,,course description,high,Primary course subject
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,5G,0.9,,course description,high,Explicit technology
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,Internet of Things,0.9,,course description,high,Explicit course focus and implementation project
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,Network Protocols,0.8,,course description,high,Protocol stacks and performance analysis
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,Docker,0.5,,course description,medium,Explicitly covered
+CIS5490,Wireless Communications for Mobile Networks and Internet of Things,Kubernetes,0.5,,course description,medium,Explicitly covered
+CIS5500,Database & Information Systems,Database Systems,1,,course description,high,Primary course subject
+CIS5500,Database & Information Systems,SQL,0.9,54,course description,high,Explicit topic
+CIS5500,Database & Information Systems,Database Design,0.9,,course description,high,ER and relational design
+CIS5500,Database & Information Systems,Transactions,0.8,,course description,high,Explicit topic
+CIS5500,Database & Information Systems,Query Optimization,0.8,,course description,high,Explicit topic
+CIS5500,Database & Information Systems,NoSQL,0.5,,course description,medium,Survey-level coverage
+CIS5510,Computer & Network Security,Cybersecurity,1,,course description,high,Primary course subject
+CIS5510,Computer & Network Security,Cryptography,0.9,,course description,high,One of four major areas
+CIS5510,Computer & Network Security,Network Security,0.9,,course description,high,One of four major areas
+CIS5510,Computer & Network Security,Operating System Security,0.8,,course description,high,One of four major areas
+CIS5510,Computer & Network Security,JavaScript,0.9,16,review,high,Manually added
+CIS5510,Computer & Network Security,Authentication,0.7,,course description,high,"Passwords, biometrics, PKI and related topics"
+CIS5530,Networked Systems,C,0.8,37,review,high,Manually added
+CIS5530,Networked Systems,C++,0.8,14,review,high,Manually added
+CIS5530,Networked Systems,Computer Networking,1,,course description,high,Primary course subject
+CIS5530,Networked Systems,Network Protocols,0.9,,course description,high,Primary implementation focus
+CIS5530,Networked Systems,Routing,0.8,,course description,high,Explicit topic
+CIS5530,Networked Systems,Distributed Systems,0.7,,course description,high,Explicit topic
+CIS5530,Networked Systems,Software-Defined Networking,0.6,,course description,high,Explicit topic
+CIS5550,Internet and Web Systems,Distributed Systems,1,,course description,high,Heavily distributed infrastructure
+CIS5550,Internet and Web Systems,Scalability,1,,course description,high,Primary systems concern
+CIS5550,Internet and Web Systems,Fault Tolerance,0.9,,course description,high,Explicit topic
+CIS5550,Internet and Web Systems,Search Engines,0.9,,course description,high,Major implementation project
+CIS5550,Internet and Web Systems,Web Systems,0.8,,course description,high,"Course domain, distinct from web design"
+CIS5550,Internet and Web Systems,Cloud Computing,0.7,,course description,high,Deployment and cloud infrastructure
+CIS5560,Cryptography,Cryptography,1,,course description,high,Primary course subject
+CIS5560,Cryptography,Public-Key Cryptography,0.9,,course description,high,Explicit topic
+CIS5560,Cryptography,Digital Signatures,0.8,,course description,high,Explicit topic
+CIS5560,Cryptography,Zero-Knowledge Proofs,0.7,,course description,high,Advanced topic
+CIS5560,Cryptography,Secure Multiparty Computation,0.6,,course description,medium,Possible advanced topic selection
+CIS5580,Secure System Engineering and Management,Threat Modeling,1,,course description,high,Explicit core technique
+CIS5580,Secure System Engineering and Management,Secure System Design,0.9,,course description,high,Explicit core technique
+CIS5580,Secure System Engineering and Management,Secure Software Development,0.9,,course description,high,Explicit core technique
+CIS5580,Secure System Engineering and Management,Security Operations,0.8,,course description,high,Explicit core technique
+CIS5580,Secure System Engineering and Management,Security Risk Management,0.7,,course description,high,Risk-based security decisions
+CIS5690,GPU Computing for Machine Learning Systems,GPU Programming,1,,course description,high,Primary course subject
+CIS5690,GPU Computing for Machine Learning Systems,Parallel Computing,0.9,,course description,high,Massively parallel programming
+CIS5690,GPU Computing for Machine Learning Systems,Machine Learning Systems,0.9,,course description,high,Course applies GPU computing to ML systems
+CIS5690,GPU Computing for Machine Learning Systems,C,0.8,37,review,high,Manually added
+CIS5690,GPU Computing for Machine Learning Systems,C++,0.8,14,review,high,Manually added
+CIS5690,GPU Computing for Machine Learning Systems,Distributed Machine Learning,0.8,,course description,high,GPU datacenter and large-scale networks
+CIS5690,GPU Computing for Machine Learning Systems,Performance Optimization,0.8,,course description,high,"Profiling, debugging and acceleration"
+CIS5810,Computer Vision & Computational Photography,Computer Vision,1,,course description,high,Primary course subject
+CIS5810,Computer Vision & Computational Photography,Image Processing,0.9,,course description,high,"Features, morphing, stitching and pixels"
+CIS5810,Computer Vision & Computational Photography,Computational Photography,0.9,,course description,high,Primary course subject
+CIS5810,Computer Vision & Computational Photography,Deep Learning,0.7,,course description,high,Deep learning for images
+CIS5810,Computer Vision & Computational Photography,Linear Algebra,0.4,,course description,medium,Stated foundation rather than central outcome
+CIS5980,Artificial Intelligence Capstone,Applied Artificial Intelligence,1,,course description,high,End-to-end AI application capstone
+CIS5980,Artificial Intelligence Capstone,AI Application Development,1,,course description,high,"Design, development and deployment"
+CIS5980,Artificial Intelligence Capstone,Model Fine-Tuning,0.8,,course description,high,Explicit expected activity
+CIS5980,Artificial Intelligence Capstone,AI Evaluation,0.8,,course description,high,Benchmarks and custom evaluation metrics
+CIS5980,Artificial Intelligence Capstone,AI Deployment,0.8,,course description,high,Full development cycle through deployment
+CIT5910,Introduction to Software Development,Python,0.9,10,description and reviews,high,First half programming language
+CIT5910,Introduction to Software Development,Java,0.9,52,description and reviews,high,Second half programming language
+CIT5910,Introduction to Software Development,Object-Oriented Programming,0.9,,course description,high,"Polymorphism, inheritance and interfaces"
+CIT5910,Introduction to Software Development,Data Structures,0.7,,course description,high,Core and advanced data structures
+CIT5910,Introduction to Software Development,Test-Driven Development,0.6,,course description,high,Explicit technique
+CIT5910,Introduction to Software Development,Debugging,0.6,,course description,high,Explicit technique
+CIT5920,Mathematical Foundations of Computer Science,Discrete Mathematics,1,,description and reviews,high,Primary course subject
+CIT5920,Mathematical Foundations of Computer Science,Probability,0.8,,course description,high,Discrete probability and expectation
+CIT5920,Mathematical Foundations of Computer Science,Graph Theory,0.8,,course description,high,Explicit topic
+CIT5920,Mathematical Foundations of Computer Science,Combinatorics,0.8,,course description,high,Permutations and combinations
+CIT5920,Mathematical Foundations of Computer Science,Mathematical Proofs,0.7,,description and reviews,high,Induction and mathematical reasoning
+CIT5930,Introduction to Computer Systems,Computer Architecture,1,,course description,high,Primary course subject
+CIT5930,Introduction to Computer Systems,C,0.9,37,course description,high,Primary programming language
+CIT5930,Introduction to Computer Systems,Assembly,0.8,1,course description,high,Instruction-set and machine-language work
+CIT5930,Introduction to Computer Systems,Systems Programming,0.7,,course description,high,Low-level representation and execution
+CIT5940,Data Structures & Software Design,Data Structures,1,,course description,high,Primary course subject
+CIT5940,Data Structures & Software Design,Java,0.9,52,course description,high,Advanced Java
+CIT5940,Data Structures & Software Design,Software Design,0.9,,course description,high,Primary course subject
+CIT5940,Data Structures & Software Design,Design Patterns,0.8,,course description,high,Explicit topic
+CIT5940,Data Structures & Software Design,Algorithm Analysis,0.7,,course description,high,Performance analysis of structures
+CIT5950,Computer Systems Programming,Operating Systems,1,,course description,high,"Processes, scheduling, caching and virtual memory"
+CIT5950,Computer Systems Programming,Systems Programming,1,,course description,high,Primary course subject
+CIT5950,Computer Systems Programming,C,0.9,37,course description,high,Primary programming language
+CIT5950,Computer Systems Programming,Concurrency,0.8,,course description,high,"Processes, threads and synchronization"
+CIT5950,Computer Systems Programming,Computer Networking,0.7,,course description,high,Network communication and protocols
+CIT5960,Algorithms & Computation,Algorithms,1,,course description,high,Primary course subject
+CIT5960,Algorithms & Computation,Algorithm Analysis,1,,course description,high,Primary course subject
+CIT5960,Algorithms & Computation,Dynamic Programming,0.9,,course description,high,Explicit design pattern
+CIT5960,Algorithms & Computation,Graph Algorithms,0.9,,course description,high,Explicit topic
+CIT5960,Algorithms & Computation,Computational Complexity,0.8,,course description,high,NP-completeness
+DATS5750,Cloud Technologies Practicum (.5 CU),Cloud Computing,1,,course description,high,Primary course subject
+DATS5750,Cloud Technologies Practicum (.5 CU),Cloud Architecture,0.9,,course description,high,Architecting robust scalable solutions
+DATS5750,Cloud Technologies Practicum (.5 CU),Distributed Systems,0.8,,course description,high,Distributed computing principles
+DATS5750,Cloud Technologies Practicum (.5 CU),Cloud Storage,0.7,,course description,high,Explicit infrastructure service
+DATS5750,Cloud Technologies Practicum (.5 CU),Cloud Networking,0.7,,course description,high,Explicit infrastructure service
+DATS5750,Cloud Technologies Practicum (.5 CU),Cloud Machine Learning,0.6,,course description,medium,Explicit cloud service area
+DATS5980,Data Science Capstone,Applied Data Science,1,,course description,high,End-to-end real-world project
+DATS5980,Data Science Capstone,Data Science Lifecycle,0.9,,course description,high,Full project lifecycle
+DATS5980,Data Science Capstone,Data Pipeline,0.8,,course description,high,Course requires all aspects of the pipeline
+DATS5980,Data Science Capstone,Data Science Project Management,0.7,,course description,high,"Project decisions, progress and mentors"
+DATS5980,Data Science Capstone,Stakeholder Collaboration,0.6,,course description,medium,Industry partner and mentor collaboration
+EAS5070,Intellectual Property Strategy and Business Law for Engineers,Intellectual Property,1,,course description,high,Primary course subject
+EAS5070,Intellectual Property Strategy and Business Law for Engineers,Patent Strategy,1,,course description,high,Primary course subject
+EAS5070,Intellectual Property Strategy and Business Law for Engineers,Technology Law,0.8,,course description,high,Legal changes affecting technology and AI
+EAS5070,Intellectual Property Strategy and Business Law for Engineers,Corporate Transactions,0.7,,course description,high,"M&A, venture funding and market entry"
+EAS5070,Intellectual Property Strategy and Business Law for Engineers,Innovation Strategy,0.7,,course description,high,IP as competitive advantage
+EAS5160,Mathematical Foundations for Machine Learning I: Probability (0.5 CU),Probability,1,,course description,high,Primary course subject
+EAS5160,Mathematical Foundations for Machine Learning I: Probability (0.5 CU),Probability Distributions,0.9,,course description,high,Discrete and continuous distributions
+EAS5160,Mathematical Foundations for Machine Learning I: Probability (0.5 CU),Conditional Probability,0.8,,course description,high,Explicit topic
+EAS5160,Mathematical Foundations for Machine Learning I: Probability (0.5 CU),Statistical Expectation,0.7,,course description,high,"Expectation, variance and moments"
+EAS5170,Mathematical Foundations for Machine Learning II: Linear Algebra (.5 CU),Linear Algebra,1,,course description,high,Primary course subject
+EAS5170,Mathematical Foundations for Machine Learning II: Linear Algebra (.5 CU),Vector Spaces,0.9,,course description,high,Explicit topic
+EAS5170,Mathematical Foundations for Machine Learning II: Linear Algebra (.5 CU),Spectral Theory,0.8,,course description,high,Explicit topic
+EAS5170,Mathematical Foundations for Machine Learning II: Linear Algebra (.5 CU),Machine Learning Mathematics,0.7,,course description,high,Mathematics underpinning ML
+EAS5240,Technology Ethics and the Legal Landscape,Engineering Ethics,1,,course description,high,Primary course subject
+EAS5240,Technology Ethics and the Legal Landscape,Technology Law,0.9,,course description,high,Primary course subject
+EAS5240,Technology Ethics and the Legal Landscape,AI Ethics,0.8,,course description,high,AI case studies throughout
+EAS5240,Technology Ethics and the Legal Landscape,Privacy,0.7,,course description,high,Explicit legal topic
+EAS5240,Technology Ethics and the Legal Landscape,Technology Risk,0.7,,course description,high,"Risk, product design and professional liability"
+EAS5440,Technology Innovation and Entrepreneurship,Entrepreneurship,1,,course description,high,Primary course subject
+EAS5440,Technology Innovation and Entrepreneurship,Business Model Design,0.9,,course description,high,Explicit course outcome
+EAS5440,Technology Innovation and Entrepreneurship,Opportunity Analysis,0.8,,course description,high,Explicit course outcome
+EAS5440,Technology Innovation and Entrepreneurship,Financial Modeling,0.7,,course description,high,Explicit course activity
+EAS5440,Technology Innovation and Entrepreneurship,Pitching,0.7,,course description,high,Pitch deck and presentation
+EAS5720,Design Thinking for Engineering Innovation,Design Thinking,1,,course description,high,Primary course subject
+EAS5720,Design Thinking for Engineering Innovation,User Research,0.9,,course description,high,Research and empathy-building
+EAS5720,Design Thinking for Engineering Innovation,Problem Framing,0.9,,course description,high,Explicit design method
+EAS5720,Design Thinking for Engineering Innovation,Prototyping,0.9,,course description,high,Prototype creation and testing
+EAS5720,Design Thinking for Engineering Innovation,Systems Thinking,0.7,,course description,high,Explicit complementary skill
+EAS5740,How to Use Data (.5 CU),Data Analysis,1,,course description,high,Primary course subject
+EAS5740,How to Use Data (.5 CU),Data Wrangling,0.9,,course description,high,Explicit process step
+EAS5740,How to Use Data (.5 CU),Data Visualization,0.8,,course description,high,Explicit topic
+EAS5740,How to Use Data (.5 CU),Predictive Analytics,0.8,,course description,high,Explicit topic
+EAS5740,How to Use Data (.5 CU),Data Storytelling,0.7,,course description,high,Presentation of insights
+EAS5830,Blockchains (.5 CU),Blockchain,1,,course description,high,Primary course subject
+EAS5830,Blockchains (.5 CU),Cryptography,0.8,,course description,high,Hash functions and digital signatures
+EAS5830,Blockchains (.5 CU),Smart Contracts,0.9,,course description,high,Hands-on smart contract development
+EAS5830,Blockchains (.5 CU),Solidity,0.8,24,course description,high,Explicit programming language
+EAS5830,Blockchains (.5 CU),Python,0.6,10,course description,high,Blockchain interaction libraries
+EAS5850,Imaging Informatics (.5 CU),Imaging Informatics,1,,course description,high,Primary course subject
+EAS5850,Imaging Informatics (.5 CU),Healthcare Data,0.9,,course description,high,Clinical imaging data and standards
+EAS5850,Imaging Informatics (.5 CU),Radiology Informatics,0.9,,course description,high,Primary clinical domain
+EAS5850,Imaging Informatics (.5 CU),AI in Healthcare,0.7,,course description,high,Growing role of AI in radiology
+EAS5850,Imaging Informatics (.5 CU),Generative AI,0.5,,course description,medium,Used in homework
+EAS5860,Medical Image Analysis (.5 CU),Medical Image Analysis,1,,course description,high,Primary course subject
+EAS5860,Medical Image Analysis (.5 CU),Computer Vision,0.9,,course description,high,Explicit foundation
+EAS5860,Medical Image Analysis (.5 CU),Machine Learning,0.8,,course description,high,Applied to medical scans
+EAS5860,Medical Image Analysis (.5 CU),Healthcare Data,0.6,,course description,medium,Clinical imaging context
+EAS5870,Generative AI for Virtual Environments (.5 CU),Generative AI,1,,course description,high,Primary course subject
+EAS5870,Generative AI for Virtual Environments (.5 CU),Unreal Engine,0.9,,course description,high,Primary implementation environment
+EAS5870,Generative AI for Virtual Environments (.5 CU),Procedural Content Generation,0.9,,course description,high,Explicit workflow
+EAS5870,Generative AI for Virtual Environments (.5 CU),Virtual Production,0.8,,course description,high,"Film, gaming and virtual production"
+EAS5870,Generative AI for Virtual Environments (.5 CU),AI-Assisted Design,0.7,,course description,high,Environment and asset generation
+ENGR5400,Engineering Economics,Engineering Economics,1,,course description,high,Primary course subject
+ENGR5400,Engineering Economics,Cost Analysis,0.9,,course description,high,Cost-driven design and estimation
+ENGR5400,Engineering Economics,Financial Modeling,0.8,,course description,high,"Financing, cash flow and financial statements"
+ENGR5400,Engineering Economics,Risk Analysis,0.8,,course description,high,Uncertainty and probabilistic risk
+ENGR5400,Engineering Economics,Investment Analysis,0.7,,course description,high,Rates of return and benefit-cost analysis
+ESE5410,Machine Learning for Data Science,Machine Learning,1,,description and reviews,high,Primary course subject
+ESE5410,Machine Learning for Data Science,Statistical Learning,0.9,,description and reviews,high,Reviews identify the statistical learning focus
+ESE5410,Machine Learning for Data Science,Model Evaluation,0.9,,description and reviews,high,"Validation, uncertainty and cross-validation"
+ESE5410,Machine Learning for Data Science,Regression and Classification,0.9,,description and reviews,high,Core model families
+ESE5410,Machine Learning for Data Science,Python,0.7,10,description and reviews,high,Programming assignments use Python
+ESE5420,Statistics for Data Science,Statistics,1,,description and reviews,high,Primary course subject
+ESE5420,Statistics for Data Science,Hypothesis Testing,0.9,,course description,high,Explicit topic
+ESE5420,Statistics for Data Science,Regression and Classification,0.9,,description and reviews,high,Explicit methods
+ESE5420,Statistics for Data Science,Model Validation,0.8,,course description,high,Explicit topic
+ESE5420,Statistics for Data Science,Python,0.7,10,description and reviews,high,Programming exercises and reviews
+ESE5460,Principles of Deep Learning,Deep Learning,1,,description and reviews,high,Primary course subject
+ESE5460,Principles of Deep Learning,Neural Networks,1,,course description,high,Deep network design and training
+ESE5460,Principles of Deep Learning,Transformers,0.8,,course reviews,high,Reviews identify Transformer coverage
+ESE5460,Principles of Deep Learning,Convolutional Neural Networks,0.8,,course reviews,high,Reviews identify CNN coverage
+ESE5460,Principles of Deep Learning,Deep Learning Optimization,0.8,,description and reviews,high,"Training, learning rates and momentum"
+ESE5460,Principles of Deep Learning,Variational Autoencoders,0.6,,course reviews,medium,Reviews identify VAE coverage
+HCIN6022,Digital Health,Digital Health,1,,course description,high,Primary course subject
+HCIN6022,Digital Health,Healthcare Data,0.9,,course description,high,Healthcare data types and patient data
+HCIN6022,Digital Health,AI in Healthcare,0.7,,course description,high,Human-in-the-loop AI and emerging systems
+HCIN6022,Digital Health,Healthcare Privacy and Security,0.8,,course description,high,"Privacy, security and confidentiality"
+HCIN6022,Digital Health,Health Equity,0.7,,course description,high,Patient-centered care and equity
+HCIN6022,Digital Health,Prototyping,0.6,,course description,high,Experimental prototype is a course outcome

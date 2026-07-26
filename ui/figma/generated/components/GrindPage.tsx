@@ -1,34 +1,68 @@
 import { useState } from 'react';
 import {
-  Filter, X, BookOpen, Calendar, Award, Briefcase, TrendingUp,
-  FileText, CheckCircle, Clock, MapPin, DollarSign, ExternalLink,
+  Filter, BookOpen, Calendar, Award, Briefcase,
+  FileText, CheckCircle, Clock, DollarSign, ExternalLink,
   ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download
 } from 'lucide-react';
-import { ResourceSource, LearningResource, EnrolledResource, UserLearningProfile } from '../data/mcitCourses';
-import { getRecommendedResources, sampleUserProfile } from '../data/learningResources';
-import { getRecommendedCourses, mcitCourses } from '../data/mcitCourses';
+import { sampleUserProfile } from "../data/learningResources";
 
-function hasLocation(
-  resource: LearningResource,
-): resource is LearningResource & { location: string } {
-  return (
-    "location" in resource &&
-    typeof (resource as { location?: unknown }).location === "string"
-  );
+interface ResourceApiItem {
+  id: string;
+  type: string;
+  name: string;
+  description: string | null;
+  source: string | null;
+  url: string | null;
+
+  pricing: {
+    type: string;
+    amount: number | null;
+    currency: string | null;
+    note: string | null;
+  };
+
+  durationMinutes: number | null;
+
+  skills: Array<{
+    skillId: number;
+    name: string | null;
+    coverageWeight: number;
+  }>;
+
+  course: {
+    courseId: string;
+    units: number | null;
+    prerequisites: unknown;
+    creators: unknown;
+  } | null;
+}
+
+interface DisplayResource {
+  id: string;
+  type: string;
+  source: string;
+  title: string;
+  description: string;
+  skills: string[];
+  duration?: string;
+  cost?: string;
+  url?: string;
+  instructor?: string;
 }
 
 interface GrindPageProps {
   targetRole: string;
-  userSkills: string[];
+  resources: ResourceApiItem[];
+  isLoadingResources: boolean;
+  resourcesError: string | null;
 }
 
-export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
-  const [sourceFilters, setSourceFilters] = useState<ResourceSource[]>([]);
+export function GrindPage({ targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+  const [sourceFilters, setSourceFilters] = useState<string[]>([]);
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const [showAllCertifications, setShowAllCertifications] = useState(false);
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -39,25 +73,67 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
     { name: 'Resume_2025_Dec.pdf', uploadDate: '2025-12-10', url: '#' },
   ]);
 
-  // Combine MCIT courses with other resources
-  const mcitResources: LearningResource[] = mcitCourses.map(course => ({
-    id: `mcit-${course.code}`,
-    type: 'course' as const,
-    source: 'MCIT' as ResourceSource,
-    title: `${course.code} - ${course.title}`,
-    description: course.description,
-    skills: course.skills,
-    recommendationScore: course.recommendationScore,
-    cost: 'Included in MCIT',
-    duration: '14 weeks',
-  }));
+  const combinedResources: DisplayResource[] = resources
+  .filter(
+    (resource) =>
+      sourceFilters.length === 0 ||
+      (resource.source !== null &&
+        sourceFilters.includes(resource.source)),
+  )
+  .filter(
+    (resource) =>
+      typeFilters.length === 0 ||
+      typeFilters.includes(resource.type),
+  )
+  .map((resource) => {
+    const creators = resource.course?.creators;
 
-  const allRecommendedResources = getRecommendedResources(targetRole, userSkills, sourceFilters.length > 0 ? sourceFilters : undefined, typeFilters.length > 0 ? typeFilters : undefined);
-  const mcitCoursesRecommended = getRecommendedCourses(targetRole, userSkills);
+    const instructor = Array.isArray(creators)
+      ? creators
+          .filter(
+            (creator): creator is string =>
+              typeof creator === "string",
+          )
+          .join(", ")
+      : undefined;
 
-  // Merge and sort all resources
-  const combinedResources = [...allRecommendedResources, ...mcitResources]
-    .sort((a, b) => b.recommendationScore - a.recommendationScore);
+    let cost: string | undefined = undefined;
+
+    if (resource.pricing.note) {
+      cost = resource.pricing.note;
+    } else if (resource.pricing.type === "free") {
+      cost = "Free";
+    } else if (resource.pricing.amount !== null) {
+      cost = [
+        resource.pricing.currency,
+        resource.pricing.amount,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    return {
+      id: resource.id,
+      type: resource.type,
+      source: resource.source ?? "Unknown",
+      title: resource.course
+        ? `${resource.course.courseId} - ${resource.name}`
+        : resource.name,
+      description:
+        resource.description ?? "No description available.",
+      skills: resource.skills.flatMap((skill) =>
+        skill.name ? [skill.name] : [],
+      ),
+      duration:
+        resource.durationMinutes === null
+          ? undefined
+          : `${resource.durationMinutes} minutes`,
+      cost,
+      url: resource.url ?? undefined,
+      instructor: instructor || undefined,
+    };
+  })
+  .sort((a, b) => a.title.localeCompare(b.title));
 
   const userProfile = sampleUserProfile;
 
@@ -129,7 +205,7 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
     }
   };
 
-  const toggleSourceFilter = (source: ResourceSource) => {
+  const toggleSourceFilter = (source: string) => {
     setSourceFilters(prev =>
       prev.includes(source) ? prev.filter(s => s !== source) : [...prev, source]
     );
@@ -141,8 +217,17 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
     );
   };
 
-  const availableSources: ResourceSource[] = ['MCIT', 'Coursera', 'MIT OCW', 'Book', 'Podcast', 'Meetup'];
-  const availableTypes = ['course', 'book', 'podcast', 'event', 'workshop'];
+  const availableSources = Array.from(
+    new Set(
+      resources.flatMap((resource) =>
+        resource.source ? [resource.source] : [],
+      ),
+    ),
+  ).sort();
+
+  const availableTypes = Array.from(
+    new Set(resources.map((resource) => resource.type)),
+  ).sort();
 
   return (
     <div className="h-full grid grid-cols-12 gap-6" style={{ maxHeight: 'calc(100vh - 120px)' }}>
@@ -227,7 +312,41 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
         {/* Resources List - Scrollable */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-3">
-            {combinedResources.map((resource, index) => {
+            {isLoadingResources && (
+              <div
+                className="py-12 text-center text-sm"
+                style={{ color: "#55371e" }}
+              >
+                Loading resources...
+              </div>
+            )}
+
+            {!isLoadingResources && resourcesError && (
+              <div
+                className="rounded-lg p-4 text-sm"
+                style={{
+                  color: "#991b1b",
+                  backgroundColor: "#fef2f2",
+                }}
+              >
+                {resourcesError}
+              </div>
+            )}
+
+            {!isLoadingResources &&
+              !resourcesError &&
+              combinedResources.length === 0 && (
+                <div
+                  className="py-12 text-center text-sm"
+                  style={{ color: "#55371e" }}
+                >
+                  No resources found.
+                </div>
+              )}
+
+            {!isLoadingResources &&
+              !resourcesError &&
+              combinedResources.map((resource) => {
               const IconComponent = resource.type === 'course' || resource.type === 'certification'
                 ? BookOpen
                 : resource.type === 'event' || resource.type === 'workshop'
@@ -243,18 +362,6 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                   style={{ borderColor: 'rgba(21, 16, 12, 0.15)' }}
                 >
                   <div className="flex items-start gap-4">
-                    {/* Rank Badge */}
-                    <div
-                      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
-                      style={{
-                        background: index < 5
-                          ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)'
-                          : 'rgba(184, 226, 212, 0.3)',
-                        color: index < 5 ? '#ffffff' : '#15100c',
-                      }}
-                    >
-                      {index + 1}
-                    </div>
 
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
@@ -291,12 +398,6 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                             {resource.cost}
                           </span>
                         )}
-                        {hasLocation(resource) && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {resource.location}
-                          </span>
-                        )}
                         {resource.instructor && (
                           <span>By {resource.instructor}</span>
                         )}
@@ -324,10 +425,7 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                       </div>
 
                       {/* Action Row */}
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs" style={{ color: '#55371e' }}>
-                          Match Score: <span className="font-semibold" style={{ color: '#02746f' }}>{resource.recommendationScore}</span>
-                        </div>
+                      <div className="flex items-center justify-end">
                         {resource.url && (
                           <a
                             href={resource.url}
@@ -543,7 +641,6 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                                 ))}
                               </div>
                               <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                                <span>Match: <strong style={{ color: '#02746f' }}>{res.recommendationScore}</strong></span>
                                 <span>Source: <strong>{res.source}</strong></span>
                                 {res.instructor && <span>By {res.instructor}</span>}
                               </div>
@@ -692,11 +789,20 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                   : skill.proficiency >= 40 ? { label: 'Intermediate', color: '#b45309', bg: 'rgba(253,211,87,0.2)' }
                   : { label: 'Beginner', color: '#55371e', bg: 'rgba(21,16,12,0.06)' };
 
-                // Find related courses from mcitCourses that teach this skill
-                const relatedCourses = mcitCourses
-                  .filter(c => c.skills.some(s => s.toLowerCase().includes(skill.name.toLowerCase()) || skill.name.toLowerCase().includes(s.toLowerCase())))
+                const relatedCourses = combinedResources
+                  .filter((resource) =>
+                    resource.skills.some(
+                      (resourceSkill) =>
+                        resourceSkill
+                          .toLowerCase()
+                          .includes(skill.name.toLowerCase()) ||
+                        skill.name
+                          .toLowerCase()
+                          .includes(resourceSkill.toLowerCase()),
+                    ),
+                  )
                   .slice(0, 2)
-                  .map(c => `${c.code} – ${c.title}`);
+                  .map((resource) => resource.title);
 
                 const isHovered = hoveredSkill === skill.name;
 
