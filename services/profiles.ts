@@ -56,6 +56,7 @@ function resumeToProfileData(resume: parsed_resume, test: boolean, resumeId: num
         profexperience: resume.experiences ?? Prisma.JsonNull,
         skills: resume.skills?.length ? resume.skills.join(", ") : null,
         resumeid: resumeId,
+        location: resume.location || null,
     };
 }
 

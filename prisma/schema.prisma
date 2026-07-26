@@ -97,6 +97,7 @@ model Profile {
   skills           String?
   resumeid         Int?
   careerplanid     Int?
+  location         String?
   Skills           Profile_Skills[]
   resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
   dreamRole        Role?            @relation(fields: [roleId], references: [roleId])

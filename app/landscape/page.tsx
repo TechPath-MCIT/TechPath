@@ -69,6 +69,7 @@ export default async function LandscapePage() {
           fullname={profile?.fullname ?? "You"}
           email={user.useremail}
           yearsOfExperience={profile?.yearofexperience ?? null}
+          location={profile?.location ?? null}
           skills={skills}
           experiences={experiences}
         />

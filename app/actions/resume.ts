@@ -26,6 +26,7 @@ type EducationEntry = {
 export interface parsed_resume{
   name?: string;
   email?: string;
+  location?: string;
   skills?: Array<string>;
   education?: string;
   educationHistory?: Array<EducationEntry>;
@@ -81,6 +82,7 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
       schema: z.object({
         name: z.string().describe("Candidate full name"),
         email: z.string().describe("Candidate primary email address"),
+        location: z.string().optional().describe("Candidate location, e.g. city and state/country, if listed on the resume"),
         skills: z.array(z.string()).describe("List of code frameworks, languages, systems, and hard [id] found."),
         education: z.string().describe("Candidate highest level of education, use (B.S or M.S or phD, or other)"),
 
@@ -121,6 +123,7 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
     const resume:parsed_resume = {
       name: object.name,
       email: object.email,
+      location: object.location,
       skills: object.skills,
       education: object.education,
       educationHistory: object.educationHistory,

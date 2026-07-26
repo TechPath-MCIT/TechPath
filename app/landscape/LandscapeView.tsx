@@ -40,6 +40,7 @@ export default function LandscapeView({
   fullname,
   email,
   yearsOfExperience,
+  location,
   skills,
   experiences,
 }: {
@@ -51,6 +52,7 @@ export default function LandscapeView({
   fullname: string;
   email: string | null;
   yearsOfExperience: number | null;
+  location: string | null;
   skills: string[];
   experiences: Experience[];
 }) {
@@ -92,6 +94,7 @@ export default function LandscapeView({
           fullname={fullname}
           email={email}
           yearsOfExperience={yearsOfExperience}
+          location={location}
           skills={skills}
           experiences={experiences}
           roles={roles}

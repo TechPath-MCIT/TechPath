@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Briefcase, Mail, Target, User } from "lucide-react";
+import { Briefcase, Mail, MapPin, Target, User } from "lucide-react";
 
 type Role = {
   roleId: number;
@@ -19,6 +19,7 @@ export default function ProfileSidebar({
   fullname,
   email,
   yearsOfExperience,
+  location,
   skills,
   experiences,
   roles,
@@ -30,6 +31,7 @@ export default function ProfileSidebar({
   fullname: string;
   email: string | null;
   yearsOfExperience: number | null;
+  location: string | null;
   skills: string[];
   experiences: Experience[];
   roles: Role[];
@@ -75,6 +77,12 @@ export default function ProfileSidebar({
           <div className="flex items-center gap-2 text-sm" style={{ color: "#55371e" }}>
             <Briefcase className="w-4 h-4 flex-shrink-0" style={{ color: "#02746f" }} />
             {yearsOfExperience} years experience
+          </div>
+        )}
+        {location && (
+          <div className="flex items-center gap-2 text-sm" style={{ color: "#55371e" }}>
+            <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: "#02746f" }} />
+            {location}
           </div>
         )}
       </div>
