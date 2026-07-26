@@ -42,6 +42,7 @@ interface UserProfileProps {
   avatarUrl?: string;
   onLoadRoles?: () => Promise<RoleOption[]>;
   onSetTargetRole?: (target: RoleOption) => Promise<void>;
+  onSetLocation?: (location: string) => Promise<void>;
 }
 
 export type RoleOption = {
@@ -68,11 +69,44 @@ export function UserProfile({
   avatarUrl,
   onLoadRoles = async () => figmaPreviewRoles,
   onSetTargetRole = async () => {},
+  onSetLocation,
 }: UserProfileProps) {
   const [userLocation, setUserLocation] = useState(location);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locationQuery, setLocationQuery] = useState('');
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const locationRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectLocation = async (city: string) => {
+    setLocationOpen(false);
+    setLocationQuery('');
+
+    if (city === userLocation) {
+      return;
+    }
+
+    const previous = userLocation;
+    setUserLocation(city);
+
+    if (!onSetLocation) {
+      return;
+    }
+
+    setSavingLocation(true);
+    setLocationError(null);
+
+    try {
+      await onSetLocation(city);
+    } catch (error) {
+      setUserLocation(previous);
+      setLocationError(
+        error instanceof Error ? error.message : 'Failed to save location.',
+      );
+    } finally {
+      setSavingLocation(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -219,12 +253,18 @@ export function UserProfile({
           <div ref={locationRef} className="relative flex-1">
             <button
               onClick={() => { setLocationOpen(v => !v); setLocationQuery(''); }}
-              className="flex items-center justify-between w-full gap-1 text-sm text-left"
+              disabled={savingLocation}
+              className="flex items-center justify-between w-full gap-1 text-sm text-left disabled:opacity-60"
               style={{ color: '#55371e' }}
             >
-              <span className="flex-1 truncate">{userLocation}</span>
+              <span className="flex-1 truncate">{savingLocation ? 'Saving…' : userLocation}</span>
               <Edit2 className="w-3 h-3 flex-shrink-0 opacity-50" style={{ color: '#55371e' }} />
             </button>
+            {locationError && (
+              <p className="mt-1 text-xs" style={{ color: '#dc2626' }}>
+                {locationError}
+              </p>
+            )}
 
             {locationOpen && (
               <div
@@ -256,7 +296,7 @@ export function UserProfile({
                     : filteredCities.map(city => (
                       <button
                         key={city}
-                        onClick={() => { setUserLocation(city); setLocationOpen(false); setLocationQuery(''); }}
+                        onClick={() => { void handleSelectLocation(city); }}
                         className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-stone-50"
                         style={{
                           color: city === userLocation ? '#02746f' : '#15100c',
