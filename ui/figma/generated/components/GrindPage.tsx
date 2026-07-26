@@ -8,6 +8,15 @@ import { ResourceSource, LearningResource, EnrolledResource, UserLearningProfile
 import { getRecommendedResources, sampleUserProfile } from '../data/learningResources';
 import { getRecommendedCourses, mcitCourses } from '../data/mcitCourses';
 
+function hasLocation(
+  resource: LearningResource,
+): resource is LearningResource & { location: string } {
+  return (
+    "location" in resource &&
+    typeof (resource as { location?: unknown }).location === "string"
+  );
+}
+
 interface GrindPageProps {
   targetRole: string;
   userSkills: string[];
@@ -282,7 +291,7 @@ export function GrindPage({ targetRole, userSkills }: GrindPageProps) {
                             {resource.cost}
                           </span>
                         )}
-                        {'location' in resource && resource.location && (
+                        {hasLocation(resource) && (
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
                             {resource.location}

@@ -1,5 +1,5 @@
 // Base resource type
-export type ResourceType = 'course' | 'book' | 'podcast' | 'event' | 'workshop' | 'certification';
+export type ResourceType = 'course' | 'book' | 'podcast' | 'event' | 'workshop' | 'certification' | "conference" | "video";
 export type ResourceSource = 'MCIT' | 'Coursera' | 'MIT OCW' | 'Udacity' | 'YouTube' | 'Book' | 'Podcast' | 'Meetup' | 'Conference';
 
 export interface LearningResource {

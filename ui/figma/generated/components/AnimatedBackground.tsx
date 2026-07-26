@@ -22,7 +22,7 @@ export function AnimatedBackground() {
   const particlesRef = useRef<Particle[]>([]);
   const ripplesRef = useRef<Ripple[]>([]);
   const mouseRef = useRef({ x: 0, y: 0 });
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -211,7 +211,7 @@ export function AnimatedBackground() {
     return () => {
       window.removeEventListener('resize', resize);
       canvas.removeEventListener('mousemove', handleMouseMove);
-      if (animationFrameRef.current) {
+      if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };

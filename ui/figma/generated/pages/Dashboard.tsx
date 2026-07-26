@@ -12,10 +12,25 @@ interface DashboardProps {
 
 type ViewMode = 'landscape' | 'agent' | 'grind';
 
+interface DashboardUserData {
+  name: string;
+  email: string;
+  role: string;
+  location: string;
+  skills: string[];
+  yearsOfExperience: number;
+  experience: string[];
+  targetRole?: {
+    current: string;
+    target: string;
+    matchScore: number;
+  };
+}
+
 export function Dashboard({ onLogout }: DashboardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('landscape');
 
-  const userData = {
+  const userData: DashboardUserData = {
     name: 'Alex Chen',
     email: 'alex.chen@example.com',
     role: 'Backend Engineer',
@@ -27,7 +42,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
       'Built React-based dashboard used by 50K+ users',
       'Reduced API response time by 60% through optimization'
     ],
-    targetRole: undefined
   };
 
   return (

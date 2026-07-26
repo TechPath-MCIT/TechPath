@@ -43,7 +43,7 @@ export function ResumeUploadPage({ onContinue, onLogout }: ResumeUploadPageProps
   };
 
   return (
-    <div className="size-full flex items-center justify-center p-6 relative">
+    <div className="min-h-dvh w-full flex items-center justify-center p-6 relative">
       <AnimatedBackground />
 
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
