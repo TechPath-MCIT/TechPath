@@ -105,6 +105,7 @@ model Profile {
   careerplanid     Int?
   location         String?
   Skills           Profile_Skills[]
+  conversations    Conversation[]
   resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
   dreamRole        Role?            @relation(fields: [roleId], references: [roleId])
   User             User?
@@ -139,6 +140,20 @@ model Resume {
   profiles Profile[]
 
   @@map("resumes")
+}
+
+model Conversation {
+  conversationId Int      @id @default(autoincrement()) @map("conversation_id")
+  profileId      Int      @map("profile_id")
+  title          String?
+  chatContext    Json     @map("chat_context")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  Profile Profile @relation(fields: [profileId], references: [profile_ID], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("conversations")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
