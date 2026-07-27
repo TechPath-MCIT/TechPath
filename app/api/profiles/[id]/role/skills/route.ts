@@ -4,7 +4,7 @@ import * as profiles from '@/services/profiles';
 import * as roles from '@/services/roles';
 
 interface RouteContext {
-    params: Promise<{ id: string }>
+    params: Promise<{ id: string, limit?: number, }>
 }
 
 /**
@@ -25,6 +25,10 @@ interface RouteContext {
  *          description: id of the profile to look up
  *          schema:
  *              type: string
+ *        - name: limit
+ *          in: path
+ *          required: false
+ *          description: limit on the number of roles retrieved. 5 is default and -1 will retrieve all
  *     responses:
  *       200:
  *         description: Successfully fetched the profile's role name and weighted skills.
@@ -39,6 +43,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     try {
         const resolved_params = await context.params;
         const profile_id = Number(resolved_params.id);
+        const limit = Number(resolved_params.limit) || 5;
         if (!Number.isInteger(profile_id)) {
             return NextResponse.json({ success: false, error: "A valid profile id is required." }, { status: 400 });
         }
@@ -56,7 +61,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         }
 
         const role = await roles.getRoleById(profile.roleId);
-        const skills = await roles.getRoleSkills(profile.roleId);
+        const skills = await roles.getRoleSkills(profile.roleId, limit);
 
         return NextResponse.json(
             { success: true, data: { roleId: profile.roleId, roleName: role?.role ?? null, skills } },

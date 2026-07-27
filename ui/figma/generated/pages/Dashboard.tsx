@@ -156,6 +156,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           }}
         >
         <GrindPage
+          profileId={0}
           targetRole={userData.targetRole?.target ?? ""}
           resources={[]}
           isLoadingResources={false}
