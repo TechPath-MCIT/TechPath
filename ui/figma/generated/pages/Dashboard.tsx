@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { UserProfile } from '../components/UserProfile';
 import { JobLandscapeNew } from '../components/JobLandscapeNew';
-import { AgentChat } from '../components/AgentChat';
+import {
+  AgentChat,
+  type AgentConversationSummary,
+  type AgentMessage,
+} from '../components/AgentChat';
 import { GrindPage } from '../components/GrindPage';
 import {
   calculateSkillMatch,
@@ -31,8 +35,94 @@ interface DashboardUserData {
   };
 }
 
+const AGENT_GREETING: AgentMessage = {
+  id: 'greeting',
+  role: 'agent',
+  content:
+    "Hi! I'm your TechPath AI Agent. I can help you update your profile, find learning materials, or answer questions about skills and career paths. How can I assist you today?",
+  timestamp: new Date(),
+};
+
+function getPreviewAgentResponse(userInput: string): string {
+  const input = userInput.toLowerCase();
+
+  if (input.includes('python') || input.includes('learn')) {
+    return "Great choice! For Python, I recommend starting with:\n\n1. Codecademy Python Course - Interactive and beginner-friendly\n2. Real Python - In-depth tutorials and projects\n3. Python Crash Course book by Eric Matthes\n\nWould you like me to add Python to your skills list?";
+  } else if (input.includes('profile') || input.includes('update')) {
+    return "I can help you update your profile! What would you like to change?\n\n- Add or remove skills\n- Update your target role\n- Change your location\n- Update years of experience\n\nJust let me know!";
+  } else if (input.includes('machine learning') || input.includes('ml')) {
+    return "Machine Learning is an exciting field! Based on your current skills, here are some steps to get started:\n\n1. Mathematics Foundation: Linear algebra, calculus, probability\n2. Programming: Python (NumPy, Pandas)\n3. ML Frameworks: Start with scikit-learn, then move to PyTorch/TensorFlow\n4. Projects: Build a simple classifier or regression model\n\nWould you like a personalized learning roadmap?";
+  } else if (input.includes('salary') || input.includes('pay')) {
+    return "Based on current market data:\n\nMachine Learning Engineer\n- Entry Level: $100K - $140K\n- Mid Level: $140K - $200K\n- Senior Level: $180K - $280K\n\nSalaries vary by location, company size, and specialization.";
+  }
+
+  return "I understand you're asking about career development. I can help you with:\n\n- Finding learning resources for specific skills\n- Understanding career paths and requirements\n- Updating your profile information\n- Getting salary insights\n- Creating a personalized learning plan\n\nWhat would you like to explore?";
+}
+
 export function Dashboard({ onLogout }: DashboardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('landscape');
+
+  // This preview page has no backend, so the Agent tab replies with
+  // canned responses instead of calling a real LLM (see AgentContainer
+  // for the wired-up version used by the actual app).
+  const [agentConversations, setAgentConversations] = useState<AgentConversationSummary[]>([]);
+  const [agentConversationId, setAgentConversationId] = useState('new');
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([AGENT_GREETING]);
+  const [agentInput, setAgentInput] = useState('');
+
+  const handleAgentNewConversation = () => {
+    setAgentConversationId('new');
+    setAgentMessages([AGENT_GREETING]);
+  };
+
+  const handleAgentSelectConversation = (id: string) => {
+    const conversation = agentConversations.find((c) => c.id === id);
+    if (conversation) {
+      setAgentConversationId(id);
+      setAgentMessages(conversation.messages);
+    }
+  };
+
+  const handleAgentSend = () => {
+    const trimmed = agentInput.trim();
+    if (!trimmed) return;
+
+    const userMessage: AgentMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: trimmed,
+      timestamp: new Date(),
+    };
+
+    const nextMessages = [...agentMessages, userMessage];
+    setAgentMessages(nextMessages);
+    setAgentInput('');
+
+    setTimeout(() => {
+      const agentReply: AgentMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'agent',
+        content: getPreviewAgentResponse(trimmed),
+        timestamp: new Date(),
+      };
+
+      const finalMessages = [...nextMessages, agentReply];
+      setAgentMessages(finalMessages);
+
+      const id = agentConversationId === 'new' ? Date.now().toString() : agentConversationId;
+      setAgentConversationId(id);
+      setAgentConversations((prev) => [
+        {
+          id,
+          title: trimmed.slice(0, 60),
+          lastMessage: agentReply.content,
+          timestamp: new Date(),
+          messages: finalMessages,
+        },
+        ...prev.filter((c) => c.id !== id),
+      ]);
+    }, 1000);
+  };
 
   const previewRoles = jobTaxonomyData.map((job, index) => ({
     roleId: index,
@@ -144,7 +234,16 @@ export function Dashboard({ onLogout }: DashboardProps) {
             animation: 'fadeIn 0.4s ease-out',
           }}
         >
-          <AgentChat />
+          <AgentChat
+            conversations={agentConversations}
+            currentConversationId={agentConversationId}
+            messages={agentMessages}
+            inputValue={agentInput}
+            onInputChange={setAgentInput}
+            onSend={handleAgentSend}
+            onSelectConversation={handleAgentSelectConversation}
+            onNewConversation={handleAgentNewConversation}
+          />
         </div>
       ) : viewMode === 'grind' ? (
         // Grind Mode - Full Screen with padding

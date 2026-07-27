@@ -363,6 +363,11 @@ export function UserProfile({
               </select>
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: '#02746f' }} />
             </div>
+            {goalError && (
+              <p className="text-xs" style={{ color: '#dc2626' }}>
+                {goalError}
+              </p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={handleSaveGoal}
@@ -393,20 +398,23 @@ export function UserProfile({
           </div>
         </div>
       ) : (
-        /* Saved state: title + pencil + skill bars */
-        requiredSkills.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold" style={{ color: '#15100c' }}>
-                Skills for {savedTarget}
-              </h3>
-              <button
-                onClick={() => { void handleEditGoal(); }}
-                className="p-1 hover:bg-stone-100 rounded transition-colors"
-              >
-                <Edit2 className="w-3 h-3" style={{ color: '#55371e' }} />
-              </button>
-            </div>
+        /* Saved state: title + pencil always shown; skill bars only when we
+           have matching skill data (the demo taxonomy doesn't cover every
+           real role, but the edit button must still be reachable either way). */
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold" style={{ color: '#15100c' }}>
+              {requiredSkills.length > 0 ? `Skills for ${savedTarget}` : `Goal: ${savedTarget}`}
+            </h3>
+            <button
+              onClick={() => { void handleEditGoal(); }}
+              className="p-1 hover:bg-stone-100 rounded transition-colors"
+              title="Change target role"
+            >
+              <Edit2 className="w-3 h-3" style={{ color: '#55371e' }} />
+            </button>
+          </div>
+          {requiredSkills.length > 0 && (
             <div className="space-y-3">
               {requiredSkills.map((skill, i) => {
                 const p = getSkillProficiency(skill);
@@ -433,8 +441,8 @@ export function UserProfile({
                 );
               })}
             </div>
-          </div>
-        )
+          )}
+        </div>
       )}
 
       {/* Experience Highlights */}
