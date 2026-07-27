@@ -99,6 +99,39 @@ export async function updateProfileFromResume(profile_ID: number, resume: parsed
     });
 }
 
+type ResumeExperienceEntry = {
+    title?: unknown;
+    bullets?: unknown;
+};
+
+/**
+ * Pulls the current role (most recent job title) and top experience bullets
+ * out of a profile's stored `profexperience` JSON blob.
+ */
+export function extractResumeSummary(profexperience: unknown): {
+    currentRole: string | null;
+    experienceHighlights: string[];
+} {
+    const experiences = Array.isArray(profexperience)
+        ? (profexperience as ResumeExperienceEntry[])
+        : [];
+
+    const currentRole = experiences.find(
+        (experience): experience is ResumeExperienceEntry & { title: string } =>
+            typeof experience.title === 'string',
+    )?.title ?? null;
+
+    const experienceHighlights = experiences
+        .flatMap((experience) =>
+            Array.isArray(experience.bullets)
+                ? experience.bullets.filter((bullet): bullet is string => typeof bullet === 'string')
+                : [],
+        )
+        .slice(0, 3);
+
+    return { currentRole, experienceHighlights };
+}
+
 export async function getSkillsByProfile(profile_ID: number) {
 
     return prisma.profile_Skills.findMany({

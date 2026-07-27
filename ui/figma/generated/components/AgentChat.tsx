@@ -1,159 +1,60 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Send, Mic, MicOff, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface Message {
+export interface AgentMessage {
   id: string;
   role: 'user' | 'agent';
   content: string;
   timestamp: Date;
 }
 
-interface Conversation {
+export interface AgentConversationSummary {
   id: string;
   title: string;
   lastMessage: string;
   timestamp: Date;
-  messages: Message[];
+  messages: AgentMessage[];
 }
 
-interface AgentChatProps {}
+interface AgentChatProps {
+  conversations: AgentConversationSummary[];
+  currentConversationId: string;
+  messages: AgentMessage[];
+  inputValue: string;
+  onInputChange: (value: string) => void;
+  onSend: () => void;
+  onSelectConversation: (conversationId: string) => void;
+  onNewConversation: () => void;
+  isSending?: boolean;
+  errorMessage?: string | null;
+}
 
-export function AgentChat({}: AgentChatProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: '1',
-      title: 'Career Path Discussion',
-      lastMessage: 'Your current match for ML Engineer role is 68%...',
-      timestamp: new Date(Date.now() - 86400000),
-      messages: [
-        {
-          id: '1-1',
-          role: 'agent',
-          content: "Hi! I'm your TechPath AI Agent. How can I help you today?",
-          timestamp: new Date(Date.now() - 86400000)
-        },
-        {
-          id: '1-2',
-          role: 'user',
-          content: "Tell me about becoming an ML engineer",
-          timestamp: new Date(Date.now() - 86400000)
-        },
-        {
-          id: '1-3',
-          role: 'agent',
-          content: "Your current match for ML Engineer role is 68%. Let me create a learning plan for you!",
-          timestamp: new Date(Date.now() - 86400000)
-        }
-      ]
-    },
-    {
-      id: '2',
-      title: 'Python Learning Resources',
-      lastMessage: 'I recommend starting with Codecademy...',
-      timestamp: new Date(Date.now() - 172800000),
-      messages: [
-        {
-          id: '2-1',
-          role: 'user',
-          content: "How can I improve my Python skills?",
-          timestamp: new Date(Date.now() - 172800000)
-        },
-        {
-          id: '2-2',
-          role: 'agent',
-          content: "I recommend starting with Codecademy Python Course for interactive learning!",
-          timestamp: new Date(Date.now() - 172800000)
-        }
-      ]
-    }
-  ]);
-
-  const [currentConversationId, setCurrentConversationId] = useState<string>('new');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'agent',
-      content: "Hi! I'm your TechPath AI Agent. I can help you update your profile, find learning materials, or answer questions about skills and career paths. How can I assist you today?",
-      timestamp: new Date()
-    }
-  ]);
-  const [inputValue, setInputValue] = useState('');
+export function AgentChat({
+  conversations,
+  currentConversationId,
+  messages,
+  inputValue,
+  onInputChange,
+  onSend,
+  onSelectConversation,
+  onNewConversation,
+  isSending = false,
+  errorMessage = null,
+}: AgentChatProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleNewConversation = () => {
-    setCurrentConversationId('new');
-    setMessages([
-      {
-        id: Date.now().toString(),
-        role: 'agent',
-        content: "Hi! I'm your TechPath AI Agent. I can help you update your profile, find learning materials, or answer questions about skills and career paths. How can I assist you today?",
-        timestamp: new Date()
-      }
-    ]);
-  };
-
-  const handleSelectConversation = (conversationId: string) => {
-    const conversation = conversations.find(c => c.id === conversationId);
-    if (conversation) {
-      setCurrentConversationId(conversationId);
-      setMessages(conversation.messages);
-    }
-  };
-
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: inputValue,
-      timestamp: new Date()
-    };
-
-    setMessages([...messages, userMessage]);
-    setInputValue('');
-
-    // Simulate agent response
-    setTimeout(() => {
-      const agentResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'agent',
-        content: getAgentResponse(inputValue),
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, agentResponse]);
-      setTimeout(scrollToBottom, 100);
-    }, 1000);
-  };
-
-  const getAgentResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase();
-
-    if (input.includes('python') || input.includes('learn')) {
-      return "Great choice! For Python, I recommend starting with:\n\n1. **Codecademy Python Course** - Interactive and beginner-friendly\n2. **Real Python** - In-depth tutorials and projects\n3. **Python Crash Course book** by Eric Matthes\n\nWould you like me to add Python to your skills list?";
-    } else if (input.includes('profile') || input.includes('update')) {
-      return "I can help you update your profile! What would you like to change?\n\n- Add or remove skills\n- Update your target role\n- Change your location\n- Update years of experience\n\nJust let me know!";
-    } else if (input.includes('machine learning') || input.includes('ml')) {
-      return "Machine Learning is an exciting field! Based on your current skills, here are some steps to get started:\n\n1. **Mathematics Foundation**: Linear algebra, calculus, probability\n2. **Programming**: Python (NumPy, Pandas)\n3. **ML Frameworks**: Start with scikit-learn, then move to PyTorch/TensorFlow\n4. **Projects**: Build a simple classifier or regression model\n\nYour current match for ML Engineer role is 68%. Would you like a personalized learning roadmap?";
-    } else if (input.includes('salary') || input.includes('pay')) {
-      return "Based on current market data:\n\n**Machine Learning Engineer**\n- Entry Level: $100K - $140K\n- Mid Level: $140K - $200K\n- Senior Level: $180K - $280K\n\nSalaries vary by location, company size, and specialization. San Francisco and NYC tend to offer higher compensation.";
-    } else {
-      return "I understand you're asking about career development. I can help you with:\n\n✓ Finding learning resources for specific skills\n✓ Understanding career paths and requirements\n✓ Updating your profile information\n✓ Getting salary insights\n✓ Creating a personalized learning plan\n\nWhat would you like to explore?";
-    }
-  };
+  }, [messages]);
 
   const toggleRecording = () => {
     if (!isRecording) {
       setIsRecording(true);
       setTimeout(() => {
         setIsRecording(false);
-        setInputValue("How can I improve my Python skills?");
+        onInputChange("How can I improve my Python skills?");
       }, 2000);
     } else {
       setIsRecording(false);
@@ -174,7 +75,7 @@ export function AgentChat({}: AgentChatProps) {
             CONVERSATIONS
           </h3>
           <button
-            onClick={handleNewConversation}
+            onClick={onNewConversation}
             className="p-1.5 rounded-lg hover:bg-stone-100 transition-colors"
             title="New Conversation"
           >
@@ -190,7 +91,7 @@ export function AgentChat({}: AgentChatProps) {
             {conversations.map((conversation) => (
               <button
                 key={conversation.id}
-                onClick={() => handleSelectConversation(conversation.id)}
+                onClick={() => onSelectConversation(conversation.id)}
                 className="w-full text-left p-3 rounded-lg transition-all hover:bg-stone-50"
                 style={{
                   backgroundColor: currentConversationId === conversation.id ? 'rgba(38, 117, 95, 0.1)' : 'transparent',
@@ -268,17 +169,33 @@ export function AgentChat({}: AgentChatProps) {
                   style={{
                     color: message.role === 'user' ? 'rgba(255,255,255,0.7)' : '#55371e',
                   }}
+                  suppressHydrationWarning
                 >
                   {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
             </div>
           ))}
+          {isSending && (
+            <div className="flex justify-start">
+              <div
+                className="max-w-[80%] rounded-2xl rounded-tl-sm px-3 py-2"
+                style={{ background: '#f4f1f2', color: '#55371e' }}
+              >
+                <p className="text-sm">Thinking…</p>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
         <div className="p-6 border-t" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
+          {errorMessage && (
+            <p className="text-xs mb-2" style={{ color: '#ef4444' }}>
+              {errorMessage}
+            </p>
+          )}
           <div className="flex items-center gap-3">
             {/* Voice Input with Volume Indicator */}
             <div className="relative">
@@ -327,20 +244,20 @@ export function AgentChat({}: AgentChatProps) {
             <input
               type="text"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onSend()}
               placeholder={isRecording ? 'Listening...' : 'Ask me anything about your career...'}
               className="flex-1 px-4 py-3 rounded-xl border-2 transition-colors"
               style={{
                 borderColor: isRecording ? '#ef4444' : 'rgba(21, 16, 12, 0.1)',
                 outline: 'none',
               }}
-              disabled={isRecording}
+              disabled={isRecording || isSending}
             />
 
             <button
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isRecording}
+              onClick={onSend}
+              disabled={!inputValue.trim() || isRecording || isSending}
               className="p-3 rounded-full transition-all disabled:opacity-50"
               style={{
                 backgroundColor: '#02746f',
