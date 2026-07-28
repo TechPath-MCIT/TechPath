@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
   ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download
 } from 'lucide-react';
 import { sampleUserProfile } from "../data/learningResources";
+
+// Virtual resource source for YouTube videos fetched per target-role skill.
+const YOUTUBE_SOURCE = "YouTube";
 
 interface ResourceApiItem {
   id: string;
@@ -50,14 +53,128 @@ interface DisplayResource {
   instructor?: string;
 }
 
+interface RoleSkill {
+  skillId: number;
+  name: string | null;
+  weight: number;
+}
+
+interface RoleSkillsApiResponse {
+  success: boolean;
+  data?: {
+    roleId: number | null;
+    roleName: string | null;
+    skills: RoleSkill[];
+  };
+  error?: string;
+}
+
+interface VideoApiResponse {
+  success: boolean;
+  data?: string;
+}
+
 interface GrindPageProps {
+  profileId: number;
   targetRole: string;
   resources: ResourceApiItem[];
   isLoadingResources: boolean;
   resourcesError: string | null;
 }
 
-export function GrindPage({ targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+export function GrindPage({ profileId, targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+  // Each retrieved YouTube video for a target-role skill.
+  const [skillVideos, setSkillVideos] = useState<
+    { skillId: number; skillName: string; videoId: string }[]
+  >([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [videosError, setVideosError] = useState<string | null>(null);
+  const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
+
+  /**
+   * Retrieves a YouTube video for each skill associated with the profile's
+   * target role. First resolves the role's skills via the role/skills endpoint,
+   * then calls GET /api/video for every (roleId, skillId) pair. Results are
+   * stored in `skillVideos` keyed by skillId.
+   */
+  const getVideo = useCallback(async () => {
+    setIsLoadingVideos(true);
+    setVideosError(null);
+
+    try {
+      // 1. Resolve the target role's skills (and its roleId) for this profile.
+      const skillsResponse = await fetch(
+        `/api/profiles/${profileId}/role/skills`,
+        { method: "GET" },
+      );
+
+      const skillsResult =
+        (await skillsResponse.json()) as RoleSkillsApiResponse;
+
+      if (!skillsResponse.ok || !skillsResult.success) {
+        throw new Error(
+          skillsResult.error ?? "Failed to load target role skills.",
+        );
+      }
+
+      const roleId = skillsResult.data?.roleId;
+      const skills = skillsResult.data?.skills ?? [];
+
+      if (roleId === null || roleId === undefined) {
+        setSkillVideos([]);
+        setHasLoadedVideos(true);
+        return;
+      }
+
+      // 2. Fetch a video for each skill. The video endpoint reads roleId/skillId
+      //    from the query string (the path segments are ignored by the handler).
+      const entries = await Promise.all(
+        skills.map(async (skill) => {
+          try {
+            const videoResponse = await fetch(
+              `/api/video/${roleId}/${skill.skillId}?roleId=${roleId}&skillId=${skill.skillId}`,
+              { method: "GET" },
+            );
+
+            if (!videoResponse.ok) {
+              return null;
+            }
+
+            const videoResult =
+              (await videoResponse.json()) as VideoApiResponse;
+
+            if (!videoResult.success || !videoResult.data) {
+              return null;
+            }
+
+            return {
+              skillId: skill.skillId,
+              skillName: skill.name ?? `Skill ${skill.skillId}`,
+              videoId: videoResult.data,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      setSkillVideos(
+        entries.filter(
+          (entry): entry is { skillId: number; skillName: string; videoId: string } =>
+            entry !== null,
+        ),
+      );
+      setHasLoadedVideos(true);
+    } catch (error) {
+      setVideosError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load videos.",
+      );
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  }, [profileId]);
   const [sourceFilters, setSourceFilters] = useState<string[]>([]);
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -206,9 +323,16 @@ export function GrindPage({ targetRole, resources, isLoadingResources, resources
   };
 
   const toggleSourceFilter = (source: string) => {
+    const isTurningOn = !sourceFilters.includes(source);
+
     setSourceFilters(prev =>
       prev.includes(source) ? prev.filter(s => s !== source) : [...prev, source]
     );
+
+    // Lazily load the target-role videos the first time YouTube is selected.
+    if (source === YOUTUBE_SOURCE && isTurningOn && !hasLoadedVideos) {
+      void getVideo();
+    }
   };
 
   const toggleTypeFilter = (type: string) => {
@@ -218,12 +342,15 @@ export function GrindPage({ targetRole, resources, isLoadingResources, resources
   };
 
   const availableSources = Array.from(
-    new Set(
-      resources.flatMap((resource) =>
+    new Set([
+      YOUTUBE_SOURCE,
+      ...resources.flatMap((resource) =>
         resource.source ? [resource.source] : [],
       ),
-    ),
+    ]),
   ).sort();
+
+  const showYouTube = sourceFilters.includes(YOUTUBE_SOURCE);
 
   const availableTypes = Array.from(
     new Set(resources.map((resource) => resource.type)),
@@ -312,6 +439,84 @@ export function GrindPage({ targetRole, resources, isLoadingResources, resources
         {/* Resources List - Scrollable */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-3">
+            {/* YouTube Videos - shown when the YouTube source is active */}
+            {showYouTube && (
+              <div className="space-y-3">
+                {isLoadingVideos && (
+                  <div
+                    className="py-12 text-center text-sm"
+                    style={{ color: "#55371e" }}
+                  >
+                    Loading videos...
+                  </div>
+                )}
+
+                {!isLoadingVideos && videosError && (
+                  <div
+                    className="rounded-lg p-4 text-sm"
+                    style={{ color: "#991b1b", backgroundColor: "#fef2f2" }}
+                  >
+                    {videosError}
+                  </div>
+                )}
+
+                {!isLoadingVideos &&
+                  !videosError &&
+                  hasLoadedVideos &&
+                  skillVideos.length === 0 && (
+                    <div
+                      className="py-12 text-center text-sm"
+                      style={{ color: "#55371e" }}
+                    >
+                      No videos found for this role.
+                    </div>
+                  )}
+
+                {!isLoadingVideos &&
+                  !videosError &&
+                  skillVideos.map((video) => (
+                    <div
+                      key={video.skillId}
+                      className="p-4 rounded-lg border"
+                      style={{ borderColor: "rgba(21, 16, 12, 0.15)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded"
+                          style={{
+                            backgroundColor: "rgba(253, 211, 87, 0.3)",
+                            color: "#15100c",
+                          }}
+                        >
+                          {YOUTUBE_SOURCE}
+                        </span>
+                        <span
+                          className="text-xs px-2 py-1 rounded font-medium"
+                          style={{
+                            backgroundColor: "rgba(184, 226, 212, 0.2)",
+                            color: "#15100c",
+                          }}
+                        >
+                          {video.skillName}
+                        </span>
+                      </div>
+                      <div
+                        className="relative w-full overflow-hidden rounded-lg"
+                        style={{ paddingBottom: "56.25%" }}
+                      >
+                        <iframe
+                          className="absolute top-0 left-0 w-full h-full"
+                          src={`https://www.youtube.com/embed/${video.videoId}`}
+                          title={video.skillName}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
             {isLoadingResources && (
               <div
                 className="py-12 text-center text-sm"
@@ -335,7 +540,8 @@ export function GrindPage({ targetRole, resources, isLoadingResources, resources
 
             {!isLoadingResources &&
               !resourcesError &&
-              combinedResources.length === 0 && (
+              combinedResources.length === 0 &&
+              !(showYouTube && sourceFilters.length === 1) && (
                 <div
                   className="py-12 text-center text-sm"
                   style={{ color: "#55371e" }}

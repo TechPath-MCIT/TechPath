@@ -91,18 +91,39 @@ export async function getLandscapeRoles() {
  * Fetches a role's skills with their weight, joined with the skill's name.
  * Sorted by weight descending so the most relevant skill comes first.
  */
-export async function getRoleSkills(roleId: number) {
-  const rows = await prisma.role_skills.findMany({
-    where: {
-      Role_ID: roleId,
-    },
-    include: {
-      skills: true,
-    },
-    orderBy: {
-      count: 'desc',
-    },
-  });
+export async function getRoleSkills(roleId: number, limit?: number) {
+  let rows;
+  if(!limit || limit < 0){
+      rows = await prisma.role_skills.findMany({
+      where: {
+        Role_ID: roleId,
+      },
+      include: {
+        skills: true,
+      },
+      orderBy: {
+        count: 'desc',
+      },
+    });
+  }
+
+  else{
+    rows = await prisma.role_skills.findMany({
+      where: {
+        Role_ID: roleId,
+      },
+      take: limit,
+      include: {
+        skills: true,
+      },
+      orderBy: {
+        count: 'desc',
+      },
+    });
+
+  }
+
+
 
   return rows
     .filter((row) => row.Skill_ID !== null)

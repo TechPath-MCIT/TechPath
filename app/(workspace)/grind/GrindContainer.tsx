@@ -108,6 +108,7 @@ export default function GrindContainer() {
       style={{ height: "calc(100vh - 72px)" }}
     >
       <GrindPage
+        profileId={profile.profileId}
         targetRole={profile.targetRole?.name ?? ""}
         resources={resources}
         isLoadingResources={isLoadingResources}
