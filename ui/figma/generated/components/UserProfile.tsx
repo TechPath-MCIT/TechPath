@@ -43,11 +43,18 @@ interface UserProfileProps {
   onLoadRoles?: () => Promise<RoleOption[]>;
   onSetTargetRole?: (target: RoleOption) => Promise<void>;
   onSetLocation?: (location: string) => Promise<void>;
+  onLoadSkillMatch?: () => Promise<SkillMatchItem[]>;
 }
 
 export type RoleOption = {
   roleId: number;
   name: string;
+};
+
+export type SkillMatchItem = {
+  skillId: number;
+  name: string;
+  matched: boolean;
 };
 
 const figmaPreviewRoles: RoleOption[] = jobTaxonomyData.map(
@@ -70,6 +77,7 @@ export function UserProfile({
   onLoadRoles = async () => figmaPreviewRoles,
   onSetTargetRole = async () => {},
   onSetLocation,
+  onLoadSkillMatch,
 }: UserProfileProps) {
   const [userLocation, setUserLocation] = useState(location);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -131,25 +139,40 @@ export function UserProfile({
   const [tempTargetRole, setTempTargetRole] = useState(targetRole?.target || '');
   const [savedTarget, setSavedTarget] = useState(targetRole?.target || '');
 
-  const targetRoleData = jobTaxonomyData.find(j => j.L4_job_role === savedTarget);
-  const requiredSkills = targetRoleData
-    ? targetRoleData.core_skills.split(',').map(s => s.trim())
-    : [];
+  const [skillMatches, setSkillMatches] = useState<SkillMatchItem[]>([]);
+  const [skillMatchesLoading, setSkillMatchesLoading] = useState(false);
+  const [skillMatchesError, setSkillMatchesError] = useState<string | null>(null);
 
-  const getSkillProficiency = (requiredSkill: string): number => {
-    const userSkillsLower = skills.map(s => s.toLowerCase());
-    const sl = requiredSkill.toLowerCase();
-    return userSkillsLower.some(u => u.includes(sl) || sl.includes(u)) ? 100 : Math.floor(Math.random() * 40);
-  };
+  useEffect(() => {
+    if (!savedTarget || !onLoadSkillMatch) {
+      setSkillMatches([]);
+      return;
+    }
 
-  const matchScore = savedTarget && requiredSkills.length > 0
-    ? Math.round(
-        requiredSkills.filter(s => {
-          const sl = s.toLowerCase();
-          return skills.map(u => u.toLowerCase()).some(u => u.includes(sl) || sl.includes(u));
-        }).length / requiredSkills.length * 100
-      )
-    : 0;
+    let cancelled = false;
+
+    (async () => {
+      setSkillMatchesLoading(true);
+      setSkillMatchesError(null);
+
+      try {
+        const result = await onLoadSkillMatch();
+        if (!cancelled) setSkillMatches(result);
+      } catch (error) {
+        if (!cancelled) {
+          setSkillMatchesError(
+            error instanceof Error ? error.message : "Failed to load skill match.",
+          );
+        }
+      } finally {
+        if (!cancelled) setSkillMatchesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [savedTarget, onLoadSkillMatch]);
 
     const loadAvailableRoles = async () => {
       if (availableRoles.length > 0 || rolesLoading) {
@@ -398,13 +421,12 @@ export function UserProfile({
           </div>
         </div>
       ) : (
-        /* Saved state: title + pencil always shown; skill bars only when we
-           have matching skill data (the demo taxonomy doesn't cover every
-           real role, but the edit button must still be reachable either way). */
+        /* Saved state: title + pencil always shown; skill bars only once we
+           have real per-skill match data back from the backend. */
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold" style={{ color: '#15100c' }}>
-              {requiredSkills.length > 0 ? `Skills for ${savedTarget}` : `Goal: ${savedTarget}`}
+              {skillMatches.length > 0 ? `Skills for ${savedTarget}` : `Goal: ${savedTarget}`}
             </h3>
             <button
               onClick={() => { void handleEditGoal(); }}
@@ -414,14 +436,24 @@ export function UserProfile({
               <Edit2 className="w-3 h-3" style={{ color: '#55371e' }} />
             </button>
           </div>
-          {requiredSkills.length > 0 && (
+          {skillMatchesError && (
+            <p className="text-xs mb-2" style={{ color: '#dc2626' }}>
+              {skillMatchesError}
+            </p>
+          )}
+          {skillMatchesLoading && skillMatches.length === 0 && (
+            <p className="text-xs italic" style={{ color: '#8a7462' }}>
+              Loading skills…
+            </p>
+          )}
+          {skillMatches.length > 0 && (
             <div className="space-y-3">
-              {requiredSkills.map((skill, i) => {
-                const p = getSkillProficiency(skill);
+              {skillMatches.map((skill) => {
+                const p = skill.matched ? 100 : 0;
                 return (
-                  <div key={i}>
+                  <div key={skill.skillId}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium" style={{ color: '#15100c' }}>{skill}</span>
+                      <span className="text-xs font-medium" style={{ color: '#15100c' }}>{skill.name}</span>
                       <span className="text-xs font-semibold" style={{ color: '#55371e' }}>{p}%</span>
                     </div>
                     <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(184, 226, 212, 0.3)' }}>

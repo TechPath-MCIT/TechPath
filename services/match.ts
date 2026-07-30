@@ -1,11 +1,47 @@
 // services/match.ts
 import { prisma } from '@/lib/db';
 import * as profiles from '@/services/profiles';
+import * as roles from '@/services/roles';
 
 export interface RoleMatchScore {
   roleId: number;
   role: string | null;
   score: number;
+}
+
+export interface SkillMatchDetail {
+  skillId: number;
+  name: string;
+  weight: number | null;
+  matched: boolean;
+}
+
+/**
+ * Returns a role's most important skills (by weight), each flagged with
+ * whether the given profile already has it linked via Profile_Skills.
+ * Filters out the "nan" catalog artifact (see services/skills.ts).
+ */
+export async function getRoleSkillMatchDetail(
+  profileId: number,
+  roleId: number,
+  limit?: number,
+): Promise<SkillMatchDetail[]> {
+  const [profileSkillRows, roleSkills] = await Promise.all([
+    profiles.getSkillsByProfile(profileId),
+    roles.getRoleSkills(roleId, limit),
+  ]);
+
+  const profileSkillIds = new Set(profileSkillRows.map((row) => row.skillId));
+
+  return roleSkills
+    .filter((skill): skill is typeof skill & { name: string } =>
+      !!skill.name && skill.name.trim().toLowerCase() !== 'nan')
+    .map((skill) => ({
+      skillId: skill.skillId,
+      name: skill.name,
+      weight: skill.weight,
+      matched: profileSkillIds.has(skill.skillId),
+    }));
 }
 
 type Category = 'CL' | 'WF' | 'DB';

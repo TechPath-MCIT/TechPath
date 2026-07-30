@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   UserProfile,
   type RoleOption,
+  type SkillMatchItem,
 } from "@/ui/figma/generated/components/UserProfile";
 import {
   JobLandscapeNew,
@@ -32,6 +33,17 @@ type MatchApiResponse = {
     role: string | null;
     score: number;
   }>;
+  matchedSkillIds?: number[];
+  error?: string;
+};
+
+type RoleSkillsApiResponse = {
+  success: boolean;
+  data?: {
+    roleId: number | null;
+    roleName: string | null;
+    skills: SkillMatchItem[];
+  };
   error?: string;
 };
 
@@ -43,6 +55,7 @@ export default function LandscapeContainer({
   const [matchScores, setMatchScores] = useState<
   Record<number, number>
   >({});
+  const [matchedSkillIds, setMatchedSkillIds] = useState<number[]>([]);
   const [matchesLoading, setMatchesLoading] = useState(true);
   const [matchesError, setMatchesError] = useState<string | null>(
     null,
@@ -80,6 +93,7 @@ export default function LandscapeContainer({
         );
 
         setMatchScores(scores);
+        setMatchedSkillIds(body.matchedSkillIds ?? []);
       } catch (error) {
         if (
           error instanceof DOMException &&
@@ -114,6 +128,40 @@ export default function LandscapeContainer({
         matchScore: 0,
       }
     : undefined;
+
+  // Overwrite each role's topSkills[].score with a real matched/not-matched
+  // value once the match fetch has actually succeeded. Left untouched (i.e.
+  // still the server-provided score: null, rendered as "—") while loading or
+  // on error, so a slow/failed fetch never reads as "you have none of these
+  // skills" instead of "we don't know yet".
+  const enrichedRoles = useMemo(() => {
+    if (matchesLoading || matchesError) return roles;
+
+    const matchedSet = new Set(matchedSkillIds);
+
+    return roles.map((role) => ({
+      ...role,
+      topSkills: role.topSkills.map((skill) => ({
+        ...skill,
+        score: matchedSet.has(skill.skillId) ? 100 : 0,
+      })),
+    }));
+  }, [roles, matchesLoading, matchesError, matchedSkillIds]);
+
+  async function loadSkillMatch(): Promise<SkillMatchItem[]> {
+    const response = await fetch(
+      `/api/profiles/${profile.profileId}/role/skills`,
+      { cache: "no-store" },
+    );
+
+    const body = (await response.json()) as RoleSkillsApiResponse;
+
+    if (!response.ok || !body.success) {
+      throw new Error(body.error ?? "Failed to load skill match.");
+    }
+
+    return body.data?.skills ?? [];
+  }
 
   async function loadRoles(): Promise<RoleOption[]> {
     const response = await fetch("/api/roles", {
@@ -222,12 +270,13 @@ export default function LandscapeContainer({
           onLoadRoles={loadRoles}
           onSetTargetRole={saveTargetRole}
           onSetLocation={saveLocation}
+          onLoadSkillMatch={loadSkillMatch}
         />
       </div>
 
       <div className="col-span-9 min-h-0">
         <JobLandscapeNew
-          roles={roles}
+          roles={enrichedRoles}
           targetRoleId={profile.targetRole?.roleId ?? null}
           matchScores={matchScores}
           matchesLoading={matchesLoading}

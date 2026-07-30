@@ -19,7 +19,9 @@ interface RouteContext {
  *       of the 24 roles in the roles table, based on the profile's linked skills
  *       (via Profile_Skills) weighted by each role's per-category skill importance
  *       (coding language / web framework / database). Not persisted. Sorted
- *       descending by score.
+ *       descending by score. Also returns the profile's full set of matched skill
+ *       ids, for clients that want to cross-reference individual skills (e.g. a
+ *       role's topSkills) against what the profile actually has.
  *     parameters:
  *        - name: id
  *          in: path
@@ -50,9 +52,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
             return NextResponse.json({ success: false, error: "No profile found for the given id." }, { status: 404 });
         }
 
-        const data = await match.getRoleMatchScores(profile_id);
+        const [data, profileSkillRows] = await Promise.all([
+            match.getRoleMatchScores(profile_id),
+            profiles.getSkillsByProfile(profile_id),
+        ]);
+        const matchedSkillIds = profileSkillRows.map((row) => row.skillId);
 
-        return NextResponse.json({ success: true, count: data.length, data }, { status: 200 });
+        return NextResponse.json({ success: true, count: data.length, data, matchedSkillIds }, { status: 200 });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

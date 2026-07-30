@@ -2,6 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import * as profiles from '@/services/profiles';
 import * as roles from '@/services/roles';
+import * as match from '@/services/match';
 
 interface RouteContext {
     params: Promise<{ id: string, limit?: number, }>
@@ -17,7 +18,8 @@ interface RouteContext {
  *     description:
  *       Resolves a profile's roleId against the roles table and returns the role's
  *       display name along with the skills tied to that role (via role_skills),
- *       each including its weight and resolved skill name.
+ *       each including its weight, resolved skill name, and whether the profile
+ *       already has that skill linked (via Profile_Skills).
  *     parameters:
  *        - name: id
  *          in: path
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         }
 
         const role = await roles.getRoleById(profile.roleId);
-        const skills = await roles.getRoleSkills(profile.roleId, limit);
+        const skills = await match.getRoleSkillMatchDetail(profile_id, profile.roleId, limit);
 
         return NextResponse.json(
             { success: true, data: { roleId: profile.roleId, roleName: role?.role ?? null, skills } },
