@@ -27,6 +27,19 @@ export async function getSkillById(skillId: number) {
     });
 }
 
+/**
+ * Fetches every catalog skill name, for feeding into prompts that need to
+ * canonicalize free-form skill mentions against known skills.
+ * Excludes the literal "nan" row (a source-data import artifact — see
+ * skillId 11, still referenced by 24 role_skills rows, not safe to delete here).
+ */
+export async function getAllSkillNames(): Promise<string[]> {
+    const rows = await prisma.skill.findMany({ select: { name: true } });
+    return rows
+        .map((row) => row.name)
+        .filter((name): name is string => !!name && name.trim().toLowerCase() !== 'nan');
+}
+
 export async function getSkillByName(skill: string) {
     const name_formated = skill.toLowerCase();
 
