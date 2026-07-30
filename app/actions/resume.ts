@@ -8,6 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import {createProfile} from "@/services/profiles";
+import * as skills from "@/services/skills";
 import { NextResponse } from 'next/server';
 
 dotenv.config({ path: '.env.local' });
@@ -85,13 +86,20 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
       };
     }
 
+    const catalog = await skills.getAllSkillNames();
+
     const { object } = await generateObject({
       model: google('gemini-2.5-flash'),
       schema: z.object({
         name: z.string().describe("Candidate full name"),
         email: z.string().describe("Candidate primary email address"),
         location: z.string().optional().describe("Candidate location, e.g. city and state/country, if listed on the resume"),
-        skills: z.array(z.string()).describe("List of code frameworks, languages, systems, and hard [id] found."),
+        skills: z.array(z.string()).describe(
+          "List of code frameworks, languages, systems, and hard skills found. " +
+          "When a found skill matches an entry in the provided skill catalog — including by " +
+          "common abbreviation or synonym (e.g. \"AI\" matching \"Artificial Intelligence\") — " +
+          "use that catalog entry's exact spelling. Keep skills not in the catalog as written."
+        ),
         education: z.string().describe("Candidate highest level of education, use (B.S or M.S or phD, or other)"),
 
         educationHistory: z.array(
@@ -113,7 +121,7 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
         )
 
       }),
-      prompt: `Extract structural criteria fields out of this plain-text resume:\n\n${unifiedText}`,
+      prompt: `Extract structural criteria fields out of this plain-text resume:\n\n${unifiedText}\n\nKnown skill catalog (map matches to these exact names):\n${catalog.join(', ')}`,
     });
 
     const experiences : Array<Experience> = [];
