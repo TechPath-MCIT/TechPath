@@ -88,6 +88,26 @@ export async function getLandscapeRoles() {
 }
 
 /**
+ * Fetches a single role's salary, satisfaction, and responsibility details
+ * (no skill breakdown — see getRoleSkills for that).
+ */
+export async function getRoleDetails(roleId: number) {
+  const role = await prisma.role.findUnique({ where: { roleId } });
+  if (!role || !role.role) return null;
+
+  return {
+    roleId: role.roleId,
+    name: role.role,
+    entrySalary: role.entrySalary,
+    salaryOutlook: role.salaryOutlook,
+    jobSatisfaction: role.jobSatisfaction,
+    mainResponsibilities: toStringArray(role.mainResponsibilities),
+    positionInField: role.positionInField,
+    typicalJobTitles: toStringArray(role.typicalJobTitles),
+  };
+}
+
+/**
  * Fetches a role's skills with their weight, joined with the skill's name.
  * Sorted by weight descending so the most relevant skill comes first.
  */
