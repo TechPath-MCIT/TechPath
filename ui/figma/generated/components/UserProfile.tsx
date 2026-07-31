@@ -131,26 +131,6 @@ export function UserProfile({
   const [tempTargetRole, setTempTargetRole] = useState(targetRole?.target || '');
   const [savedTarget, setSavedTarget] = useState(targetRole?.target || '');
 
-  const targetRoleData = jobTaxonomyData.find(j => j.L4_job_role === savedTarget);
-  const requiredSkills = targetRoleData
-    ? targetRoleData.core_skills.split(',').map(s => s.trim())
-    : [];
-
-  const getSkillProficiency = (requiredSkill: string): number => {
-    const userSkillsLower = skills.map(s => s.toLowerCase());
-    const sl = requiredSkill.toLowerCase();
-    return userSkillsLower.some(u => u.includes(sl) || sl.includes(u)) ? 100 : Math.floor(Math.random() * 40);
-  };
-
-  const matchScore = savedTarget && requiredSkills.length > 0
-    ? Math.round(
-        requiredSkills.filter(s => {
-          const sl = s.toLowerCase();
-          return skills.map(u => u.toLowerCase()).some(u => u.includes(sl) || sl.includes(u));
-        }).length / requiredSkills.length * 100
-      )
-    : 0;
-
     const loadAvailableRoles = async () => {
       if (availableRoles.length > 0 || rolesLoading) {
         return;
@@ -398,13 +378,11 @@ export function UserProfile({
           </div>
         </div>
       ) : (
-        /* Saved state: title + pencil always shown; skill bars only when we
-           have matching skill data (the demo taxonomy doesn't cover every
-           real role, but the edit button must still be reachable either way). */
+        /* Saved state: title + pencil to reopen the editor. */
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold" style={{ color: '#15100c' }}>
-              {requiredSkills.length > 0 ? `Skills for ${savedTarget}` : `Goal: ${savedTarget}`}
+              Goal: {savedTarget}
             </h3>
             <button
               onClick={() => { void handleEditGoal(); }}
@@ -414,34 +392,6 @@ export function UserProfile({
               <Edit2 className="w-3 h-3" style={{ color: '#55371e' }} />
             </button>
           </div>
-          {requiredSkills.length > 0 && (
-            <div className="space-y-3">
-              {requiredSkills.map((skill, i) => {
-                const p = getSkillProficiency(skill);
-                return (
-                  <div key={i}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium" style={{ color: '#15100c' }}>{skill}</span>
-                      <span className="text-xs font-semibold" style={{ color: '#55371e' }}>{p}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(184, 226, 212, 0.3)' }}>
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${p}%`,
-                          background: p >= 70
-                            ? 'linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)'
-                            : p >= 40
-                            ? 'linear-gradient(90deg, #fdd357 0%, #b8e2d4 100%)'
-                            : 'linear-gradient(90deg, #ef4444 0%, #fdd357 100%)',
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 

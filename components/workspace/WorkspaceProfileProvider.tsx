@@ -47,6 +47,18 @@ export function WorkspaceProfileProvider({
   );
   const [location, setLocation] = useState<string>(profile.location);
 
+  // useState only takes its initial value from `profile` on mount, so a
+  // router.refresh() re-running the server layout and passing a fresh
+  // `profile` prop into this already-mounted provider would otherwise be
+  // silently ignored. Re-sync during render (React's documented pattern for
+  // this) rather than in an effect, which would cost an extra render pass.
+  const [prevProfile, setPrevProfile] = useState(profile);
+  if (profile !== prevProfile) {
+    setPrevProfile(profile);
+    setTargetRole(profile.targetRole);
+    setLocation(profile.location);
+  }
+
   const value = useMemo(
     () => ({
       ...profile,

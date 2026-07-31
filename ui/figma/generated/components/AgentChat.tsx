@@ -23,6 +23,7 @@ interface AgentChatProps {
   inputValue: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  onCancelSend?: () => void;
   onSelectConversation: (conversationId: string) => void;
   onNewConversation: () => void;
   isSending?: boolean;
@@ -36,6 +37,7 @@ export function AgentChat({
   inputValue,
   onInputChange,
   onSend,
+  onCancelSend,
   onSelectConversation,
   onNewConversation,
   isSending = false,
@@ -179,10 +181,19 @@ export function AgentChat({
           {isSending && (
             <div className="flex justify-start">
               <div
-                className="max-w-[80%] rounded-2xl rounded-tl-sm px-3 py-2"
+                className="flex max-w-[80%] items-center gap-2 rounded-2xl rounded-tl-sm px-3 py-2"
                 style={{ background: '#f4f1f2', color: '#55371e' }}
               >
                 <p className="text-sm">Thinking…</p>
+                {onCancelSend && (
+                  <button
+                    onClick={onCancelSend}
+                    className="text-xs font-medium underline underline-offset-2 hover:opacity-70"
+                    style={{ color: '#02746f' }}
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </div>
           )}
