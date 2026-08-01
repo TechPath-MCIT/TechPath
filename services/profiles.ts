@@ -51,6 +51,86 @@ export async function setProfileLocation(profile_ID: number, location: string) {
     });
 }
 
+/**
+ * Corrects a profile's total years of experience.
+ * @param profile_ID the profile to update
+ * @param years the corrected total years of experience
+ */
+export async function setYearsOfExperience(profile_ID: number, years: number) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { yearofexperience: years },
+    });
+}
+
+/**
+ * Corrects a profile's highest level of education.
+ * @param profile_ID the profile to update
+ * @param degree the corrected highest degree, e.g. "M.S. Computer Science"
+ */
+export async function setHighestDegree(profile_ID: number, degree: string) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { highestDegree: degree },
+    });
+}
+
+export type WorkExperienceEntry = {
+    company: string;
+    title: string;
+    years: number;
+    bullets: string[];
+};
+
+/**
+ * Prepends a new work experience entry to a profile's experience history
+ * (most recent first, matching the convention set by resume parsing).
+ * @param profile_ID the profile to update
+ * @param entry the new work experience entry
+ */
+export async function addWorkExperience(profile_ID: number, entry: WorkExperienceEntry) {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { profexperience: true },
+    });
+
+    const existing = Array.isArray(current?.profexperience) ? current.profexperience : [];
+    const updated = [entry, ...existing];
+
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { profexperience: updated as unknown as Prisma.InputJsonValue },
+    });
+}
+
+export type EducationEntry = {
+    school: string;
+    degree: string;
+    dateRange: string;
+    gpa?: string;
+};
+
+/**
+ * Prepends a new education entry to a profile's education history
+ * (most recent first, matching the convention set by resume parsing).
+ * @param profile_ID the profile to update
+ * @param entry the new education entry
+ */
+export async function addEducationEntry(profile_ID: number, entry: EducationEntry) {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { educationhistory: true },
+    });
+
+    const existing = Array.isArray(current?.educationhistory) ? current.educationhistory : [];
+    const updated = [entry, ...existing];
+
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { educationhistory: updated as unknown as Prisma.InputJsonValue },
+    });
+}
+
 
 /**
  * Maps parsed resume fields onto the Profile columns shared by create and update.
@@ -143,6 +223,84 @@ export async function getSkillsByProfile(profile_ID: number) {
 }
 
 /**
+ * Appends newly linked skill names onto the profile's `skills` display
+ * string (used by the UI and the AI agent's context), so it stays in sync
+ * after skills are added via addSkillsToProfile/addSkillstoProfileByName.
+ * Additive only — never removes or reorders names already present, since
+ * Profile_Skills isn't guaranteed to be a complete mirror of every name in
+ * the display string (e.g. resume-parsed skills that don't exactly match
+ * the skill catalog never get linked there in the first place).
+ */
+export async function appendSkillsToField(profile_ID: number, newNames: string[]): Promise<string[]> {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { skills: true },
+    });
+
+    const existing = current?.skills
+        ? current.skills.split(',').map((name) => name.trim()).filter(Boolean)
+        : [];
+
+    const existingLower = new Set(existing.map((name) => name.toLowerCase()));
+    const merged = [...existing];
+
+    for (const name of newNames) {
+        if (!existingLower.has(name.toLowerCase())) {
+            merged.push(name);
+            existingLower.add(name.toLowerCase());
+        }
+    }
+
+    await prisma.profile.update({
+        where: { profile_ID },
+        data: { skills: merged.length ? merged.join(', ') : null },
+    });
+
+    return merged;
+}
+
+/**
+ * Unlinks the given skills from a profile (Profile_Skills rows).
+ * @param profile_ID to remove skills from
+ * @param skills_ids skill ids to unlink
+ */
+export async function removeSkillsFromProfile(profile_ID: number, skills_ids: number[]) {
+    const result = await prisma.profile_Skills.deleteMany({
+        where: {
+            profileId: profile_ID,
+            skillId: { in: skills_ids },
+        },
+    });
+
+    return { success: true, count: result.count };
+}
+
+/**
+ * Removes names from the profile's `skills` display string. Counterpart to
+ * appendSkillsToField — only removes names that are present, case-insensitive.
+ */
+export async function removeSkillsFromField(profile_ID: number, namesToRemove: string[]): Promise<string[]> {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { skills: true },
+    });
+
+    const existing = current?.skills
+        ? current.skills.split(',').map((name) => name.trim()).filter(Boolean)
+        : [];
+
+    const toRemoveLower = new Set(namesToRemove.map((name) => name.toLowerCase()));
+    const remaining = existing.filter((name) => !toRemoveLower.has(name.toLowerCase()));
+
+    await prisma.profile.update({
+        where: { profile_ID },
+        data: { skills: remaining.length ? remaining.join(', ') : null },
+    });
+
+    return remaining;
+}
+
+/**
  * add [id] to a given profile
  * @param profile_ID to add [id] to
  * @param skills_ids array of skill id's to add [id]
@@ -152,19 +310,13 @@ export async function getSkillsByProfile(profile_ID: number) {
 export async function addSkillsToProfile(profile_ID: number, skills_ids: number[]) {
     let success = true;
     try{
-        for (let i = 0; i < skills_ids.length; i++) {
-            await prisma.profile_Skills.create({
-                data:{
-                    profileId: profile_ID,
-
-                    skillId: skills_ids[i],
-
-
-                }
-            })
-
-        }
-
+        await prisma.profile_Skills.createMany({
+            data: skills_ids.map((skillId) => ({
+                profileId: profile_ID,
+                skillId,
+            })),
+            skipDuplicates: true,
+        });
     }
 
     catch(error){

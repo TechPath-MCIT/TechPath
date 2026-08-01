@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AgentChat,
   type AgentConversationSummary,
@@ -25,6 +26,7 @@ type AgentApiResponse = {
   success: boolean;
   reply?: string;
   conversationId?: number;
+  profileUpdated?: boolean;
   error?: string;
 };
 
@@ -64,6 +66,7 @@ function toSummary(item: ConversationApiItem): AgentConversationSummary {
 
 export default function AgentContainer() {
   const profile = useWorkspaceProfile();
+  const router = useRouter();
 
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string>("new");
@@ -73,6 +76,9 @@ export default function AgentContainer() {
   const [error, setError] = useState<string | null>(null);
 
   const conversationIdRef = useRef<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const SEND_TIMEOUT_MS = 30000;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,6 +152,13 @@ export default function AgentContainer() {
     setIsSending(true);
     setError(null);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(
+      () => controller.abort("timeout"),
+      SEND_TIMEOUT_MS,
+    );
+
     try {
       const response = await fetch(`/api/profiles/${profile.profileId}/agent`, {
         method: "POST",
@@ -155,6 +168,7 @@ export default function AgentContainer() {
           history,
           conversationId: conversationIdRef.current,
         }),
+        signal: controller.signal,
       });
 
       const body = (await response.json()) as AgentApiResponse;
@@ -167,6 +181,12 @@ export default function AgentContainer() {
       conversationIdRef.current = resolvedConversationId;
       if (resolvedConversationId) {
         setCurrentConversationId(String(resolvedConversationId));
+      }
+
+      if (body.profileUpdated) {
+        // The agent changed the profile via a tool call (target role, skills,
+        // or location) — refresh server data so the sidebar/Landscape reflect it.
+        router.refresh();
       }
 
       const agentMessage: AgentMessage = {
@@ -197,11 +217,25 @@ export default function AgentContainer() {
         ]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The agent couldn't respond.");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError(
+          controller.signal.reason === "timeout"
+            ? "The agent took too long to respond. Please try again."
+            : "Cancelled.",
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "The agent couldn't respond.");
+      }
     } finally {
+      clearTimeout(timeoutId);
+      abortControllerRef.current = null;
       setIsSending(false);
     }
-  }, [conversations, inputValue, isSending, messages, profile.profileId]);
+  }, [conversations, inputValue, isSending, messages, profile.profileId, router]);
+
+  const handleCancelSend = useCallback(() => {
+    abortControllerRef.current?.abort("cancelled");
+  }, []);
 
   return (
     <div className="p-6" style={{ height: "calc(100vh - 72px)" }}>
@@ -212,6 +246,7 @@ export default function AgentContainer() {
         inputValue={inputValue}
         onInputChange={setInputValue}
         onSend={handleSend}
+        onCancelSend={handleCancelSend}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         isSending={isSending}

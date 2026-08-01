@@ -4,7 +4,7 @@ import * as profiles from '@/services/profiles';
 import * as roles from '@/services/roles';
 import * as match from '@/services/match';
 import * as conversations from '@/services/conversations';
-import { generateAgentReply, type AgentProfileContext } from '@/services/agent';
+import { generateAgentReply, type AgentAvailableRole, type AgentProfileContext } from '@/services/agent';
 import type { ChatMessage } from '@/services/conversations';
 
 interface RouteContext {
@@ -99,21 +99,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
         const { currentRole, experienceHighlights } = profiles.extractResumeSummary(profile.profexperience);
 
+        const allRoles = await roles.getRolesList(100);
+        const availableRoles: AgentAvailableRole[] = allRoles.flatMap((role) =>
+            role.role ? [{ roleId: role.roleId, name: role.role }] : [],
+        );
+
         const agentContext: AgentProfileContext = {
             name: profile.fullname ?? "there",
             currentRole,
             location: profile.location,
             education: profile.highestDegree && profile.highestDegree !== "N/A" ? profile.highestDegree : null,
             skills: profile.skills
-                ? profile.skills.split(",").map((skill) => skill.trim()).filter(Boolean)
+                ? profile.skills.split(",").map((skill: string) => skill.trim()).filter(Boolean)
                 : [],
             yearsOfExperience: profile.yearofexperience,
             experienceHighlights,
             targetRole: targetRole?.role ?? null,
             matchScore,
+            availableRoles,
         };
 
-        const reply = await generateAgentReply(agentContext, history, message);
+        const { reply, profileUpdated } = await generateAgentReply(agentContext, history, message, profile_id);
 
         const now = new Date().toISOString();
         const updatedHistory: ChatMessage[] = [
@@ -127,7 +133,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             : await conversations.createConversation(profile_id, message.slice(0, 60), updatedHistory);
 
         return NextResponse.json(
-            { success: true, reply, conversationId: conversation.conversationId },
+            { success: true, reply, conversationId: conversation.conversationId, profileUpdated },
             { status: 200 },
         );
     } catch (error: any) {
