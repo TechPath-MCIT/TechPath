@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
-  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download
+  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download, Search, X
 } from 'lucide-react';
 import { sampleUserProfile } from "../data/learningResources";
 
@@ -419,6 +419,7 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [sourceFilters, setSourceFilters] = useState<string[]>([]);
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -489,6 +490,15 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       url: resource.url ?? undefined,
       instructor: instructor || undefined,
     };
+  })
+  .filter((resource) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    return (
+      resource.title.toLowerCase().includes(query) ||
+      resource.skills.some((skill) => skill.toLowerCase().includes(query))
+    );
   })
   .sort((a, b) => a.title.localeCompare(b.title));
 
@@ -575,6 +585,14 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     new Set(resources.map((resource) => resource.type)),
   ).sort();
 
+  // The course search bar only filters combinedResources (MCIT courses) —
+  // it has no effect on the separately-rendered YouTube video list, so hide
+  // it whenever the course list itself isn't visible (i.e. only "YouTube" is
+  // selected as an active source filter).
+  const coursesVisible =
+    sourceFilters.length === 0 ||
+    sourceFilters.some((source) => source !== YOUTUBE_SOURCE);
+
   return (
     <div className="h-full grid grid-cols-12 gap-6" style={{ maxHeight: 'calc(100vh - 120px)' }}>
       {/* Left Panel - Resources */}
@@ -590,18 +608,45 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                 Personalized for: <span className="font-semibold">{targetRole}</span>
               </p>
             </div>
-            <button
-              onClick={() => setShowFilterPanel(!showFilterPanel)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
-              style={{
-                background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
-                color: showFilterPanel ? '#ffffff' : '#02746f',
-              }}
-            >
-              <Filter className="w-4 h-4" />
-              <span className="text-sm font-medium">Filters</span>
-              {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
+            <div className="flex items-center gap-2">
+              {coursesVisible && (
+                <div className="relative">
+                  <Search
+                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: '#55371e' }}
+                  />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search MCIT courses…"
+                    className="pl-9 pr-8 py-2 rounded-lg text-sm border outline-none w-56"
+                    style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                    </button>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => setShowFilterPanel(!showFilterPanel)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
+                style={{
+                  background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                  color: showFilterPanel ? '#ffffff' : '#02746f',
+                }}
+              >
+                <Filter className="w-4 h-4" />
+                <span className="text-sm font-medium">Filters</span>
+                {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {/* Filter Panel */}
