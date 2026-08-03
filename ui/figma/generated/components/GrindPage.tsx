@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
@@ -172,6 +173,8 @@ function ResourceSkillBadges({ resource, className }: { resource: ProfileResourc
 }
 
 export function GrindPage({ profileId, targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+  const router = useRouter();
+
   // Each retrieved YouTube video for a target-role skill.
   const [skillVideos, setSkillVideos] = useState<
     { skillId: number; skillName: string; videoId: string }[]
@@ -319,12 +322,15 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       }
 
       await loadProfileResources();
+      // Completing a course rolls its skills onto the profile, so refresh
+      // the shared workspace profile data (sidebar skills, match scores, etc).
+      router.refresh();
     } catch {
       // Minimal handling: no-op on failure.
     } finally {
       setCompletingResourceId(null);
     }
-  }, [profileId, loadProfileResources]);
+  }, [profileId, loadProfileResources, router]);
 
   /**
    * Retrieves a YouTube video for each skill associated with the profile's

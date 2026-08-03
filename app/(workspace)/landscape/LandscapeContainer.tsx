@@ -105,7 +105,7 @@ export default function LandscapeContainer({
     return () => {
       controller.abort();
     };
-  }, [profile.profileId]);
+  }, [profile.profileId, profile.skills]);
 
   const targetRole = profile.targetRole
     ? {
