@@ -223,6 +223,70 @@ export async function getSkillsByProfile(profile_ID: number) {
 }
 
 /**
+ * Fetches the resources associated with a profile (via profile_resource),
+ * optionally filtered by resource status id and/or resource type.
+ * Includes the underlying resource row and the linked status for each entry.
+ * @param profile_ID the profile whose resources to fetch
+ * @param statusId optional resource_status.status_id to filter by; omit for all statuses
+ * @param resourceType optional resources.resource_type to filter by; omit for all types
+ */
+export async function getResourcesByProfile(profile_ID: number, statusId?: number, resourceType?: string) {
+    return prisma.profile_resource.findMany({
+        where: {
+            profile_id: profile_ID,
+            ...(statusId !== undefined ? { statusId } : {}),
+            ...(resourceType ? { resource: { resource_type: resourceType } } : {}),
+        },
+        include: {
+            resource: true,
+            status: true,
+        },
+    });
+}
+
+/**
+ * Sets the status of a resource for a profile. If a profile_resource row
+ * already exists for this (profile, resource) pair, its status is updated;
+ * otherwise a new row is inserted.
+ * @param profile_ID the profile the resource belongs to
+ * @param resource_id the resource to set status for
+ * @param statusId the resource_status.status_id to set
+ */
+export async function setResourceStatusForProfile(profile_ID: number, resource_id: string, statusId: number) {
+    const statusRow = await prisma.resource_status.findUnique({
+        where: { status_id: statusId },
+        select: { status_id: true },
+    });
+
+    if (!statusRow) {
+        throw new Error(`Unknown resource status id: ${statusId}`);
+    }
+
+    const existing = await prisma.profile_resource.findFirst({
+        where: {
+            profile_id: profile_ID,
+            resource_id,
+        },
+        select: { id: true },
+    });
+
+    if (existing) {
+        return prisma.profile_resource.update({
+            where: { id: existing.id },
+            data: { statusId },
+        });
+    }
+
+    return prisma.profile_resource.create({
+        data: {
+            profile_id: profile_ID,
+            resource_id,
+            statusId,
+        },
+    });
+}
+
+/**
  * Appends newly linked skill names onto the profile's `skills` display
  * string (used by the UI and the AI agent's context), so it stays in sync
  * after skills are added via addSkillsToProfile/addSkillstoProfileByName.

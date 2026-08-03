@@ -5,7 +5,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const type = request.nextUrl.searchParams.get("type") ?? undefined;
+    const types = request.nextUrl.searchParams.getAll("type");
+    const type =
+      types.length === 0 ? undefined : types.length === 1 ? types[0] : types;
     const source = request.nextUrl.searchParams.get("source") ?? undefined;
 
     const limitParam = request.nextUrl.searchParams.get("limit");
