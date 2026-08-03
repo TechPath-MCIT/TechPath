@@ -146,46 +146,48 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
           .describe('Skill names to remove, e.g. ["Java", "Perl"].'),
       }),
       execute: async ({ skillNames }) => {
-        const resolved = await Promise.all(
-          skillNames.map(async (name) => ({ name, match: await skills.getSkillByName(name) })),
-        );
+        // Removability is based on the profile's `skills` display string —
+        // that's what the user actually sees (e.g. on Landscape) — not on
+        // whether the skill happens to be linked in Profile_Skills, since
+        // that table isn't guaranteed to mirror every name in the string
+        // (e.g. resume-parsed skills that were never linked to the catalog).
+        const profile = await profiles.getProfileById(profileId);
+        const currentNames = profile?.skills
+          ? profile.skills.split(',').map((name) => name.trim()).filter(Boolean)
+          : [];
+        const currentNamesLower = new Set(currentNames.map((name) => name.toLowerCase()));
 
-        const found = resolved.filter(
+        const onProfile = skillNames.filter((name) => currentNamesLower.has(name.toLowerCase()));
+        const notOnProfile = skillNames.filter((name) => !currentNamesLower.has(name.toLowerCase()));
+
+        if (onProfile.length === 0) {
+          return { success: false, removed: [], notOnProfile };
+        }
+
+        await profiles.removeSkillsFromField(profileId, onProfile);
+
+        // Best-effort: also unlink relationally wherever a catalog match and
+        // an existing Profile_Skills link happen to exist.
+        const resolved = await Promise.all(
+          onProfile.map(async (name) => ({ name, match: await skills.getSkillByName(name) })),
+        );
+        const catalogMatches = resolved.filter(
           (entry): entry is { name: string; match: { skillId: number } } => entry.match !== null,
         );
-        const notInCatalog = resolved.filter((entry) => entry.match === null).map((entry) => entry.name);
 
-        if (found.length === 0) {
-          return { success: false, removed: [], notInCatalog, notOnProfile: [] };
+        if (catalogMatches.length > 0) {
+          const currentLinks = await profiles.getSkillsByProfile(profileId);
+          const linkedSkillIds = new Set(currentLinks.map((row) => row.skillId));
+          const linkedIdsToRemove = catalogMatches
+            .filter((entry) => linkedSkillIds.has(entry.match.skillId))
+            .map((entry) => entry.match.skillId);
+
+          if (linkedIdsToRemove.length > 0) {
+            await profiles.removeSkillsFromProfile(profileId, linkedIdsToRemove);
+          }
         }
 
-        const currentLinks = await profiles.getSkillsByProfile(profileId);
-        const linkedSkillIds = new Set(currentLinks.map((row) => row.skillId));
-
-        const linked = found.filter((entry) => linkedSkillIds.has(entry.match.skillId));
-        const notOnProfile = found
-          .filter((entry) => !linkedSkillIds.has(entry.match.skillId))
-          .map((entry) => entry.name);
-
-        if (linked.length === 0) {
-          return { success: false, removed: [], notInCatalog, notOnProfile };
-        }
-
-        await profiles.removeSkillsFromProfile(
-          profileId,
-          linked.map((entry) => entry.match.skillId),
-        );
-        await profiles.removeSkillsFromField(
-          profileId,
-          linked.map((entry) => entry.name),
-        );
-
-        return {
-          success: true,
-          removed: linked.map((entry) => entry.name),
-          notInCatalog,
-          notOnProfile,
-        };
+        return { success: true, removed: onProfile, notOnProfile };
       },
     }),
     set_location: tool({
