@@ -28,6 +28,8 @@ export interface AgentProfileContext {
   targetRole: string | null;
   matchScore: number | null;
   availableRoles: AgentAvailableRole[];
+  coursesInProgress: string[];
+  coursesCompleted: string[];
 }
 
 function buildSystemPrompt(context: AgentProfileContext): string {
@@ -51,6 +53,12 @@ function buildSystemPrompt(context: AgentProfileContext): string {
           context.matchScore != null ? ` (current match score: ${context.matchScore}%)` : ''
         }.`
       : "They haven't picked a target role yet.",
+    context.coursesInProgress.length
+      ? `Courses currently in progress: ${context.coursesInProgress.join(', ')}.`
+      : null,
+    context.coursesCompleted.length
+      ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
+      : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
     "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation.",
     "Use get_skill_gaps, find_resources_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_resources_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
