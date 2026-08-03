@@ -595,46 +595,45 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
                 Personalized for: <span className="font-semibold">{targetRole}</span>
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {coursesVisible && (
-                <div className="relative">
-                  <Search
-                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2"
-                    style={{ color: '#55371e' }}
-                  />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search MCIT courses…"
-                    className="pl-9 pr-8 py-2 rounded-lg text-sm border outline-none w-56"
-                    style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2"
-                      title="Clear search"
-                    >
-                      <X className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
-                    </button>
-                  )}
-                </div>
-              )}
-              <button
-                onClick={() => setShowFilterPanel(!showFilterPanel)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
-                style={{
-                  background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
-                  color: showFilterPanel ? '#ffffff' : '#02746f',
-                }}
-              >
-                <Filter className="w-4 h-4" />
-                <span className="text-sm font-medium">Filters</span>
-                {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-            </div>
+            <button
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md flex-shrink-0"
+              style={{
+                background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                color: showFilterPanel ? '#ffffff' : '#02746f',
+              }}
+            >
+              <Filter className="w-4 h-4" />
+              <span className="text-sm font-medium">Filters</span>
+              {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
           </div>
+
+          {coursesVisible && (
+            <div className="relative mb-4">
+              <Search
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: '#55371e' }}
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search MCIT courses…"
+                className="w-full pl-9 pr-8 py-2 rounded-lg text-sm border outline-none"
+                style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Filter Panel */}
           {showFilterPanel && (
