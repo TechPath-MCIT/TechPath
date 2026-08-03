@@ -110,6 +110,8 @@ export default function GrindContainer() {
       <GrindPage
         profileId={profile.profileId}
         targetRole={profile.targetRole?.name ?? ""}
+        skills={profile.skills}
+        experience={profile.experience}
         resources={resources}
         isLoadingResources={isLoadingResources}
         resourcesError={resourcesError}

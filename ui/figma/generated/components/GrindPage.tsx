@@ -53,23 +53,6 @@ interface ProfileResourcesApiResponse {
   error?: string;
 }
 
-// A profile_Skills row joined with its Skill, as returned by
-// GET /api/profiles/{id}/skills.
-interface ProfileSkillApiItem {
-  id: number;
-  profileId: number;
-  skillId: number;
-  Skills: {
-    skillId: number;
-    name: string | null;
-  } | null;
-}
-
-interface ProfileSkillsApiResponse {
-  success: boolean;
-  data?: ProfileSkillApiItem[];
-}
-
 interface ResourceApiItem {
   id: string;
   type: string;
@@ -138,6 +121,8 @@ interface VideoApiResponse {
 interface GrindPageProps {
   profileId: number;
   targetRole: string;
+  skills: string[];
+  experience: string[];
   resources: ResourceApiItem[];
   isLoadingResources: boolean;
   resourcesError: string | null;
@@ -172,7 +157,7 @@ function ResourceSkillBadges({ resource, className }: { resource: ProfileResourc
   );
 }
 
-export function GrindPage({ profileId, targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+export function GrindPage({ profileId, targetRole, skills, experience, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
   const router = useRouter();
 
   // Each retrieved YouTube video for a target-role skill.
@@ -244,38 +229,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     return map;
   }, [profileResources]);
 
-  // Skills linked to this profile (from the profile_Skills table), fetched
-  // from the API. Only the skill name is displayed.
-  const [profileSkills, setProfileSkills] = useState<ProfileSkillApiItem[]>([]);
-
-  const loadProfileSkills = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch(
-        `/api/profiles/${profileId}/skills`,
-        { method: "GET", signal },
-      );
-
-      const result = (await response.json()) as ProfileSkillsApiResponse;
-
-      if (!response.ok || !result.success) {
-        return;
-      }
-
-      setProfileSkills(result.data ?? []);
-    } catch {
-      // Minimal handling: leave the list empty on failure.
-    }
-  }, [profileId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadProfileSkills(controller.signal);
-
-    return () => {
-      controller.abort();
-    };
-  }, [loadProfileSkills]);
-
   /**
    * Adds a resource to this profile with the "In Progress" status via the
    * PUT endpoint, then refreshes the pairing list so it shows up immediately.
@@ -323,7 +276,9 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
 
       await loadProfileResources();
       // Completing a course rolls its skills onto the profile, so refresh
-      // the shared workspace profile data (sidebar skills, match scores, etc).
+      // the shared workspace profile data — this page's own Skills/Experience
+      // tabs are driven by that same data via props, so no separate refetch
+      // is needed here.
       router.refresh();
     } catch {
       // Minimal handling: no-op on failure.
@@ -1353,21 +1308,18 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
           {/* Skills Tab */}
           {profileSection === 'skills' && (
             <div className="space-y-2">
-              {profileSkills.length === 0 ? (
+              {skills.length === 0 ? (
                 <p className="text-xs" style={{ color: '#55371e' }}>No skills yet.</p>
               ) : (
-                profileSkills.map((skill) => {
-                  const name = skill.Skills?.name ?? `Skill ${skill.skillId}`;
-                  return (
-                    <div
-                      key={skill.id}
-                      className="rounded-lg px-3 py-2.5"
-                      style={{ backgroundColor: 'rgba(184,226,212,0.12)', border: '1px solid rgba(2,116,111,0.15)' }}
-                    >
-                      <span className="text-sm font-medium" style={{ color: '#15100c' }}>{name}</span>
-                    </div>
-                  );
-                })
+                skills.map((name) => (
+                  <div
+                    key={name}
+                    className="rounded-lg px-3 py-2.5"
+                    style={{ backgroundColor: 'rgba(184,226,212,0.12)', border: '1px solid rgba(2,116,111,0.15)' }}
+                  >
+                    <span className="text-sm font-medium" style={{ color: '#15100c' }}>{name}</span>
+                  </div>
+                ))
               )}
             </div>
           )}
@@ -1404,39 +1356,21 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
 
           {/* Experience Tab */}
           {profileSection === 'experience' && (
-            <div className="space-y-3">
-              {userProfile.resume.experience.map((exp, idx) => {
-                const key = `exp-${idx}`;
-                const isOpen = expandedItem === key;
-                return (
+            <div className="space-y-2">
+              {experience.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No experience highlights yet.</p>
+              ) : (
+                experience.map((highlight, idx) => (
                   <div
                     key={idx}
-                    className="p-4 rounded-lg transition-all cursor-pointer"
-                    style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
-                    onClick={() => setExpandedItem(isOpen ? null : key)}
+                    className="p-3 rounded-lg flex gap-2"
+                    style={{ backgroundColor: 'rgba(184,226,212,0.08)' }}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium" style={{ color: '#15100c' }}>{exp.role}</div>
-                        <div className="text-sm" style={{ color: '#55371e' }}>{exp.company} · {exp.duration}</div>
-                      </div>
-                      {exp.highlights.length > 0 && (
-                        <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                      )}
-                    </div>
-                    {isOpen && exp.highlights.length > 0 && (
-                      <ul className="mt-3 space-y-1 border-t pt-3" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
-                        {exp.highlights.map((h, hidx) => (
-                          <li key={hidx} className="flex gap-2 text-sm" style={{ color: '#55371e' }}>
-                            <span style={{ color: '#02746f' }}>•</span>
-                            <span>{h}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <span style={{ color: '#02746f' }}>•</span>
+                    <span className="text-sm" style={{ color: '#15100c' }}>{highlight}</span>
                   </div>
-                );
-              })}
+                ))
+              )}
             </div>
           )}
 
