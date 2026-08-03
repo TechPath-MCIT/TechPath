@@ -52,6 +52,23 @@ interface ProfileResourcesApiResponse {
   error?: string;
 }
 
+// A profile_Skills row joined with its Skill, as returned by
+// GET /api/profiles/{id}/skills.
+interface ProfileSkillApiItem {
+  id: number;
+  profileId: number;
+  skillId: number;
+  Skills: {
+    skillId: number;
+    name: string | null;
+  } | null;
+}
+
+interface ProfileSkillsApiResponse {
+  success: boolean;
+  data?: ProfileSkillApiItem[];
+}
+
 interface ResourceApiItem {
   id: string;
   type: string;
@@ -224,6 +241,38 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     return map;
   }, [profileResources]);
 
+  // Skills linked to this profile (from the profile_Skills table), fetched
+  // from the API. Only the skill name is displayed.
+  const [profileSkills, setProfileSkills] = useState<ProfileSkillApiItem[]>([]);
+
+  const loadProfileSkills = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/skills`,
+        { method: "GET", signal },
+      );
+
+      const result = (await response.json()) as ProfileSkillsApiResponse;
+
+      if (!response.ok || !result.success) {
+        return;
+      }
+
+      setProfileSkills(result.data ?? []);
+    } catch {
+      // Minimal handling: leave the list empty on failure.
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadProfileSkills(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadProfileSkills]);
+
   /**
    * Adds a resource to this profile with the "In Progress" status via the
    * PUT endpoint, then refreshes the pairing list so it shows up immediately.
@@ -366,7 +415,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showAgentInput, setShowAgentInput] = useState(false);
@@ -467,9 +515,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       expectedCompletion: '2026-07-15',
     },
   ];
-
-  // Sort skills by proficiency
-  const sortedSkills = [...userProfile.skills].sort((a, b) => b.proficiency - a.proficiency);
 
   const handleAgentSubmit = () => {
     // In real app, this would send to the Agent
@@ -1207,78 +1252,22 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
           {/* Skills Tab */}
           {profileSection === 'skills' && (
             <div className="space-y-2">
-              {sortedSkills.map((skill, idx) => {
-                const level =
-                  skill.proficiency >= 80 ? { label: 'Expert', color: '#02746f', bg: 'rgba(2,116,111,0.1)' }
-                  : skill.proficiency >= 60 ? { label: 'Proficient', color: '#059669', bg: 'rgba(5,150,105,0.1)' }
-                  : skill.proficiency >= 40 ? { label: 'Intermediate', color: '#b45309', bg: 'rgba(253,211,87,0.2)' }
-                  : { label: 'Beginner', color: '#55371e', bg: 'rgba(21,16,12,0.06)' };
-
-                const relatedCourses = combinedResources
-                  .filter((resource) =>
-                    resource.skills.some(
-                      (resourceSkill) =>
-                        resourceSkill
-                          .toLowerCase()
-                          .includes(skill.name.toLowerCase()) ||
-                        skill.name
-                          .toLowerCase()
-                          .includes(resourceSkill.toLowerCase()),
-                    ),
-                  )
-                  .slice(0, 2)
-                  .map((resource) => resource.title);
-
-                const isHovered = hoveredSkill === skill.name;
-
-                return (
-                  <div
-                    key={idx}
-                    className="relative rounded-lg px-3 py-2.5 cursor-default transition-all"
-                    style={{ backgroundColor: isHovered ? 'rgba(184,226,212,0.12)' : 'transparent', border: '1px solid', borderColor: isHovered ? 'rgba(2,116,111,0.2)' : 'transparent' }}
-                    onMouseEnter={() => setHoveredSkill(skill.name)}
-                    onMouseLeave={() => setHoveredSkill(null)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium" style={{ color: '#15100c' }}>{skill.name}</span>
-                      <span
-                        className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                        style={{ color: level.color, backgroundColor: level.bg }}
-                      >
-                        {level.label}
-                      </span>
+              {profileSkills.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No skills yet.</p>
+              ) : (
+                profileSkills.map((skill) => {
+                  const name = skill.Skills?.name ?? `Skill ${skill.skillId}`;
+                  return (
+                    <div
+                      key={skill.id}
+                      className="rounded-lg px-3 py-2.5"
+                      style={{ backgroundColor: 'rgba(184,226,212,0.12)', border: '1px solid rgba(2,116,111,0.15)' }}
+                    >
+                      <span className="text-sm font-medium" style={{ color: '#15100c' }}>{name}</span>
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: '#55371e', opacity: 0.7 }}>{skill.source}</div>
-
-                    {/* Hover detail card */}
-                    {isHovered && (
-                      <div
-                        className="absolute left-0 right-0 z-10 mt-1 p-3 rounded-lg shadow-lg"
-                        style={{ top: '100%', backgroundColor: '#fff', border: '1px solid rgba(2,116,111,0.2)' }}
-                      >
-                        {relatedCourses.length > 0 && (
-                          <div className="mb-2">
-                            <div className="text-xs font-semibold mb-1" style={{ color: '#02746f' }}>Related Courses</div>
-                            {relatedCourses.map((c, i) => (
-                              <div key={i} className="text-xs flex items-center gap-1" style={{ color: '#55371e' }}>
-                                <BookOpen className="w-3 h-3 flex-shrink-0" style={{ color: '#02746f' }} />
-                                {c}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-xs font-semibold mb-1" style={{ color: '#02746f' }}>Experience</div>
-                          <div className="text-xs flex items-center gap-1" style={{ color: '#55371e' }}>
-                            <Briefcase className="w-3 h-3 flex-shrink-0" style={{ color: '#02746f' }} />
-                            {skill.source}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           )}
 

@@ -217,7 +217,10 @@ export async function getSkillsByProfile(profile_ID: number) {
     return prisma.profile_Skills.findMany({
         where:{
             profileId: profile_ID
-        }
+        },
+        include: {
+            Skills: true,
+        },
     })
 
 }
