@@ -61,7 +61,8 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
     "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation.",
-    "Use get_skill_gaps, find_resources_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_resources_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
+    "Use get_skill_gaps, find_mcit_courses_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
+    "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
     context.availableRoles.length
@@ -284,11 +285,11 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         };
       },
     }),
-    find_resources_for_skill: tool({
+    find_mcit_courses_for_skill: tool({
       description:
-        "Find real learning resources (courses, tutorials, etc.) that teach a specific skill. Use this when recommending how the user can learn or improve a skill, instead of suggesting generic resources from general knowledge.",
+        "Find real MCIT courses that teach a specific skill. Use this when recommending how the user can learn or improve a skill, instead of suggesting generic resources from general knowledge.",
       inputSchema: z.object({
-        skillName: z.string().describe('The skill to find learning resources for, e.g. "Kubernetes".'),
+        skillName: z.string().describe('The skill to find MCIT courses for, e.g. "Kubernetes".'),
       }),
       execute: async ({ skillName }) => {
         const match = await skills.getSkillByName(skillName);
