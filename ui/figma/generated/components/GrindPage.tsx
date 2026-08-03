@@ -426,6 +426,9 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showAgentInput, setShowAgentInput] = useState(false);
   const [agentInputText, setAgentInputText] = useState('');
+  const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
+  const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
+  const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
   const [uploadedResumes, setUploadedResumes] = useState<{ name: string; uploadDate: string; url: string }[]>([
     { name: 'Resume_2026_May.pdf', uploadDate: '2026-05-15', url: '#' },
     { name: 'Resume_2025_Dec.pdf', uploadDate: '2025-12-10', url: '#' },
@@ -532,11 +535,40 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     },
   ];
 
-  const handleAgentSubmit = () => {
-    // In real app, this would send to the Agent
-    console.log('Sending to Agent:', agentInputText);
-    setAgentInputText('');
-    setShowAgentInput(false);
+  const handleAgentSubmit = async () => {
+    const message = agentInputText.trim();
+    if (!message) return;
+
+    setIsSendingAgentUpdate(true);
+    setAgentUpdateError(null);
+    setAgentUpdateReply(null);
+
+    try {
+      const response = await fetch(`/api/profiles/${profileId}/agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+
+      const body = await response.json();
+
+      if (!response.ok || !body.success) {
+        throw new Error(body.error ?? "Failed to send update to the agent.");
+      }
+
+      setAgentUpdateReply(body.reply);
+      setAgentInputText('');
+
+      if (body.profileUpdated) {
+        router.refresh();
+      }
+    } catch (error) {
+      setAgentUpdateError(
+        error instanceof Error ? error.message : "Failed to send update to the agent.",
+      );
+    } finally {
+      setIsSendingAgentUpdate(false);
+    }
   };
 
   const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -952,11 +984,81 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       {/* Right Panel - My Progress */}
       <div className="col-span-7 bg-white rounded-2xl shadow-md flex flex-col overflow-hidden" style={{ maxHeight: '100%' }}>
         {/* Profile Header */}
-        <div className="px-6 pt-6 pb-3">
+        <div className="px-6 pt-6 pb-3 flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold" style={{ color: '#15100c' }}>
             My Progress
           </h2>
+          {/* Applies to the whole profile, not any specific tab below */}
+          <button
+            onClick={() => setShowAgentInput(!showAgentInput)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md flex-shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
+              color: '#ffffff',
+            }}
+          >
+            <Edit3 className="w-4 h-4" />
+            <span className="text-sm font-medium">Update with AI</span>
+          </button>
         </div>
+
+        {/* Quick Update — applies to the whole profile, shown right below
+            the header rather than inside tab content, since it isn't
+            scoped to any tab */}
+        {showAgentInput && (
+          <div className="mx-6 mb-3 p-4 rounded-lg space-y-3" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)', border: '1px solid rgba(2, 116, 111, 0.3)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4" style={{ color: '#02746f' }} />
+              <span className="text-sm font-semibold" style={{ color: '#15100c' }}>
+                Quick Update
+              </span>
+            </div>
+            <textarea
+              value={agentInputText}
+              onChange={e => setAgentInputText(e.target.value)}
+              placeholder="Tell the AI what to update... e.g., 'Add AWS to my skills' or 'Set my target role to Data Scientist' or 'I now have 3 years of experience'"
+              disabled={isSendingAgentUpdate}
+              className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
+              style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
+            />
+            {agentUpdateError && (
+              <p className="text-xs" style={{ color: '#dc2626' }}>
+                {agentUpdateError}
+              </p>
+            )}
+            {agentUpdateReply && (
+              <p className="text-xs p-2 rounded" style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}>
+                {agentUpdateReply}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={handleAgentSubmit}
+                disabled={isSendingAgentUpdate || !agentInputText.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
+                  color: '#ffffff',
+                }}
+              >
+                <Send className="w-4 h-4" />
+                <span className="text-sm font-medium">{isSendingAgentUpdate ? 'Sending…' : 'Send to AI'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowAgentInput(false);
+                  setAgentUpdateReply(null);
+                  setAgentUpdateError(null);
+                }}
+                disabled={isSendingAgentUpdate}
+                className="px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                style={{ color: '#55371e' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Profile Tabs */}
         <div className="flex border-b px-6" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
@@ -1043,58 +1145,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Edit Button - Always visible */}
-          <button
-            onClick={() => setShowAgentInput(!showAgentInput)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-all hover:shadow-md mb-6"
-            style={{
-              background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
-              color: '#ffffff',
-            }}
-          >
-            <Edit3 className="w-4 h-4" />
-            <span className="text-sm font-medium">Update with AI</span>
-          </button>
-
-          {/* Agent Input */}
-          {showAgentInput && (
-            <div className="p-4 rounded-lg space-y-3 mb-6" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)', border: '1px solid rgba(2, 116, 111, 0.3)' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4" style={{ color: '#02746f' }} />
-                <span className="text-sm font-semibold" style={{ color: '#15100c' }}>
-                  Quick Update
-                </span>
-              </div>
-              <textarea
-                value={agentInputText}
-                onChange={e => setAgentInputText(e.target.value)}
-                placeholder="Tell the AI what to update... e.g., 'Add AWS certification obtained on June 1st, 2026' or 'I completed the Deep Learning course'"
-                className="w-full px-3 py-2 rounded-lg border resize-none text-sm"
-                style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={handleAgentSubmit}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all"
-                  style={{
-                    background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
-                    color: '#ffffff',
-                  }}
-                >
-                  <Send className="w-4 h-4" />
-                  <span className="text-sm font-medium">Send to AI</span>
-                </button>
-                <button
-                  onClick={() => setShowAgentInput(false)}
-                  className="px-4 py-2 rounded-lg text-sm transition-colors"
-                  style={{ color: '#55371e' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Ongoing Tab */}
           {profileSection === 'ongoing' && (
             <div className="space-y-6">
