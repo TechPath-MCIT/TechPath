@@ -238,7 +238,11 @@ export async function getResourcesByProfile(profile_ID: number, statusId?: numbe
             ...(resourceType ? { resource: { resource_type: resourceType } } : {}),
         },
         include: {
-            resource: true,
+            resource: {
+                include: {
+                    courses: true,
+                },
+            },
             status: true,
         },
     });

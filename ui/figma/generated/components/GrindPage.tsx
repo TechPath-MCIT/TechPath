@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
@@ -8,6 +8,42 @@ import { sampleUserProfile } from "../data/learningResources";
 
 // Virtual resource source for YouTube videos fetched per target-role skill.
 const YOUTUBE_SOURCE = "YouTube";
+
+// resource_status.status_id that represents an "In Progress" resource.
+const IN_PROGRESS_STATUS_ID = 1;
+
+// resource_status.status_id that represents a "Complete" resource.
+const COMPLETED_STATUS_ID = 2;
+
+interface ProfileResourceApiItem {
+  id: number;
+  resource_id: string;
+  statusId: number;
+  startDate: string | null;
+  expectedEndDate: string | null;
+  resource: {
+    resource_id: string;
+    resource_type: string;
+    name: string;
+    description: string | null;
+    source: string | null;
+    source_url: string | null;
+    courses: {
+      course_id: string;
+      course_name: string;
+    } | null;
+  } | null;
+  status: {
+    status_id: number;
+    status: string;
+  } | null;
+}
+
+interface ProfileResourcesApiResponse {
+  success: boolean;
+  data?: ProfileResourceApiItem[];
+  error?: string;
+}
 
 interface ResourceApiItem {
   id: string;
@@ -90,6 +126,95 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
+
+  // In-progress course resources for this profile, fetched from the API.
+  const [activeCourses, setActiveCourses] = useState<ProfileResourceApiItem[]>([]);
+  const [addingResourceId, setAddingResourceId] = useState<string | null>(null);
+
+  const loadActiveCourses = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?statusId=${IN_PROGRESS_STATUS_ID}&type=course`,
+        { method: "GET", signal },
+      );
+
+      const result =
+        (await response.json()) as ProfileResourcesApiResponse;
+
+      if (!response.ok || !result.success) {
+        return;
+      }
+
+      setActiveCourses(result.data ?? []);
+    } catch {
+      // Minimal handling: leave the list empty on failure.
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadActiveCourses(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadActiveCourses]);
+
+  // Completed course resources for this profile, fetched from the API.
+  const [completedCourses, setCompletedCourses] = useState<ProfileResourceApiItem[]>([]);
+
+  const loadCompletedCourses = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?statusId=${COMPLETED_STATUS_ID}&type=course`,
+        { method: "GET", signal },
+      );
+
+      const result =
+        (await response.json()) as ProfileResourcesApiResponse;
+
+      if (!response.ok || !result.success) {
+        return;
+      }
+
+      setCompletedCourses(result.data ?? []);
+    } catch {
+      // Minimal handling: leave the list empty on failure.
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadCompletedCourses(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadCompletedCourses]);
+
+  /**
+   * Adds a resource to this profile with the "In Progress" status via the
+   * PUT endpoint, then refreshes the ongoing list so it shows up immediately.
+   */
+  const handleAddResource = useCallback(async (resourceId: string) => {
+    setAddingResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${IN_PROGRESS_STATUS_ID}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadActiveCourses();
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setAddingResourceId(null);
+    }
+  }, [profileId, loadActiveCourses]);
 
   /**
    * Retrieves a YouTube video for each skill associated with the profile's
@@ -253,24 +378,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   .sort((a, b) => a.title.localeCompare(b.title));
 
   const userProfile = sampleUserProfile;
-
-  // Sample active courses
-  const activeCourses = [
-    {
-      id: 'active-1',
-      title: 'CIT 5960 - Algorithms & Computation',
-      startDate: '2026-05-01',
-      endDate: '2026-08-15',
-      progress: 35,
-    },
-    {
-      id: 'active-2',
-      title: 'ESE 5410 - Machine Learning for Data Science',
-      startDate: '2026-05-01',
-      endDate: '2026-08-15',
-      progress: 28,
-    },
-  ];
 
   // Sample upcoming activities
   const upcomingActivities = [
@@ -631,7 +738,18 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                       </div>
 
                       {/* Action Row */}
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleAddResource(resource.id)}
+                          disabled={addingResourceId === resource.id}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md disabled:opacity-60"
+                          style={{
+                            background: 'rgba(184, 226, 212, 0.2)',
+                            color: '#02746f',
+                          }}
+                        >
+                          {addingResourceId === resource.id ? 'Adding...' : 'Add'}
+                        </button>
                         {resource.url && (
                           <a
                             href={resource.url}
@@ -815,41 +933,43 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                   </h3>
                   <div className="space-y-2">
                     {activeCourses.map(course => {
-                      const res = combinedResources.find(r => r.title.includes(course.title.split(' - ')[0]));
-                      const isHov = hoveredItem === course.id;
+                      const isHov = hoveredItem === `course-${course.id}`;
+                      const name = course.resource?.name ?? `Resource ${course.resource_id}`;
+                      const title = course.resource?.courses
+                        ? `${course.resource.courses.course_id} - ${name}`
+                        : name;
                       return (
                         <div
                           key={course.id}
                           className="relative p-3 rounded-lg transition-all cursor-default"
                           style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'rgba(253,211,87,0.3)'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
-                          onMouseEnter={() => setHoveredItem(course.id)}
+                          onMouseEnter={() => setHoveredItem(`course-${course.id}`)}
                           onMouseLeave={() => setHoveredItem(null)}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <BookOpen className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
-                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{course.title}</span>
+                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                             </div>
-                            <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{course.progress}%</span>
+                            {course.status?.status && (
+                              <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{course.status.status}</span>
+                            )}
                           </div>
-                          <div className="w-full h-1.5 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: 'rgba(184,226,212,0.3)' }}>
-                            <div className="h-full rounded-full" style={{ width: `${course.progress}%`, background: 'linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)' }} />
-                          </div>
-                          <div className="text-xs" style={{ color: '#55371e' }}>
-                            {new Date(course.startDate).toLocaleDateString()} – {new Date(course.endDate).toLocaleDateString()}
-                          </div>
-                          {isHov && res && (
+                          {(course.startDate || course.expectedEndDate) && (
+                            <div className="text-xs" style={{ color: '#55371e' }}>
+                              {course.startDate ? new Date(course.startDate).toLocaleDateString() : '—'}
+                              {' – '}
+                              {course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
+                            </div>
+                          )}
+                          {isHov && course.resource?.description && (
                             <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
-                              <p className="text-xs" style={{ color: '#55371e' }}>{res.description}</p>
-                              <div className="flex flex-wrap gap-1">
-                                {res.skills.slice(0, 4).map((s, i) => (
-                                  <span key={i} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(184,226,212,0.3)', color: '#15100c' }}>{s}</span>
-                                ))}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                                <span>Source: <strong>{res.source}</strong></span>
-                                {res.instructor && <span>By {res.instructor}</span>}
-                              </div>
+                              <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+                              {course.resource.source && (
+                                <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
+                                  <span>Source: <strong>{course.resource.source}</strong></span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -928,59 +1048,57 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                     <CheckCircle className="w-4 h-4" style={{ color: '#02746f' }} />
                     Completed Courses
                   </h3>
-                  {userProfile.completedCourses.length > 2 && (
+                  {completedCourses.length > 2 && (
                     <button
                       onClick={() => setShowAllCompleted(!showAllCompleted)}
                       className="text-xs font-medium flex items-center gap-1"
                       style={{ color: '#02746f' }}
                     >
-                      {showAllCompleted ? 'Show Less' : `View All (${userProfile.completedCourses.length})`}
+                      {showAllCompleted ? 'Show Less' : `View All (${completedCourses.length})`}
                       {showAllCompleted ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
                   )}
                 </div>
+                {completedCourses.length === 0 ? (
+                  <p className="text-xs" style={{ color: '#55371e' }}>No completed courses yet.</p>
+                ) : (
                 <div className="space-y-2">
-                  {(['Introduction to Python Programming', 'Data Structures & Algorithms'] as const).slice(0, showAllCompleted ? undefined : 2).map((title, idx) => {
-                    const enrolled = userProfile.completedCourses[idx];
-                    if (!enrolled) return null;
-                    const res = combinedResources.find(r => r.title.toLowerCase().includes('python') && idx === 0 || r.title.toLowerCase().includes('algorithm') && idx === 1);
-                    const isHov = hoveredItem === `course-done-${idx}`;
+                  {(showAllCompleted ? completedCourses : completedCourses.slice(0, 2)).map(course => {
+                    const name = course.resource?.name ?? `Resource ${course.resource_id}`;
+                    const title = course.resource?.courses
+                      ? `${course.resource.courses.course_id} - ${name}`
+                      : name;
+                    const isHov = hoveredItem === `course-done-${course.id}`;
                     return (
                       <div
-                        key={idx}
+                        key={course.id}
                         className="p-3 rounded-lg transition-all cursor-default"
                         style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: `1px solid ${isHov ? 'rgba(2,116,111,0.25)' : 'transparent'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.06)' : 'none' }}
-                        onMouseEnter={() => setHoveredItem(`course-done-${idx}`)}
+                        onMouseEnter={() => setHoveredItem(`course-done-${course.id}`)}
                         onMouseLeave={() => setHoveredItem(null)}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
                           <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                         </div>
-                        <div className="text-xs" style={{ color: '#55371e' }}>Completed: {enrolled.completionDate}</div>
-                        {isHov && enrolled.notes && (
-                          <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: 'rgba(2,116,111,0.15)', color: '#55371e' }}>
-                            {enrolled.notes}
-                          </div>
+                        {course.expectedEndDate && (
+                          <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
                         )}
-                        {isHov && res && (
+                        {isHov && course.resource?.description && (
                           <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(2,116,111,0.15)' }}>
-                            <p className="text-xs" style={{ color: '#55371e' }}>{res.description}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {res.skills.slice(0, 4).map((s, i) => (
-                                <span key={i} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(184,226,212,0.3)', color: '#15100c' }}>{s}</span>
-                              ))}
-                            </div>
-                            <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                              <span>Source: <strong>{res.source}</strong></span>
-                              {res.instructor && <span>By {res.instructor}</span>}
-                            </div>
+                            <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+                            {course.resource.source && (
+                              <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
+                                <span>Source: <strong>{course.resource.source}</strong></span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
+                )}
               </div>
             </div>
           )}
