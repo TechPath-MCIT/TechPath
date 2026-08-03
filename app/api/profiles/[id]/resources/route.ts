@@ -101,6 +101,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
  *          description: resource_status.status_id to set
  *          schema:
  *              type: number
+ *        - name: complete
+ *          in: query
+ *          required: false
+ *          description:
+ *            When "true", also links the resource's associated skills to the
+ *            profile (and appends their names to the profile's skills field)
+ *            in addition to setting the status.
+ *          schema:
+ *              type: boolean
  *     responses:
  *       200:
  *         description: Successfully set the resource status for the profile.
@@ -120,6 +129,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         const resourceId = request.nextUrl.searchParams.get("resourceId");
         const statusParam = request.nextUrl.searchParams.get("statusId");
         const statusId = Number(statusParam);
+        const complete = request.nextUrl.searchParams.get("complete") === "true";
 
         if (typeof resourceId !== "string" || resourceId.length === 0) {
             return NextResponse.json({ success: false, error: "resourceId is required." }, { status: 400 });
@@ -129,7 +139,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             return NextResponse.json({ success: false, error: "statusId must be a valid integer." }, { status: 400 });
         }
 
-        const result = await profiles.setResourceStatusForProfile(profile_id, resourceId, statusId);
+        const result = complete
+            ? await profiles.completeResourceForProfile(profile_id, resourceId, statusId)
+            : await profiles.setResourceStatusForProfile(profile_id, resourceId, statusId);
 
         return NextResponse.json({ success: true, data: result }, { status: 200 });
     } catch (error: any) {

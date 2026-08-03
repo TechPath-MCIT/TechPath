@@ -241,6 +241,11 @@ export async function getResourcesByProfile(profile_ID: number, statusId?: numbe
             resource: {
                 include: {
                     courses: true,
+                    resource_skills: {
+                        include: {
+                            skills: true,
+                        },
+                    },
                 },
             },
             status: true,
@@ -288,6 +293,41 @@ export async function setResourceStatusForProfile(profile_ID: number, resource_i
             statusId,
         },
     });
+}
+
+/**
+ * Marks a resource as complete for a profile and rolls the skills that the
+ * resource teaches onto the profile. Sets the profile_resource status to the
+ * given statusId (defaults to the "Complete" status), then links every skill
+ * associated with the resource to the profile and appends their names to the
+ * profile's `skills` display string so the UI and agent stay in sync.
+ * @param profile_ID the profile completing the resource
+ * @param resource_id the resource to mark complete
+ * @param statusId the resource_status.status_id representing completion
+ */
+export async function completeResourceForProfile(profile_ID: number, resource_id: string, statusId: number) {
+    const link = await setResourceStatusForProfile(profile_ID, resource_id, statusId);
+
+    const resourceSkills = await prisma.resource_skills.findMany({
+        where: { resource_id },
+        include: { skills: true },
+    });
+
+    const skillIds = resourceSkills.map((row) => row.skill_id);
+    const skillNames = resourceSkills
+        .map((row) => row.skills?.name)
+        .filter((name): name is string => Boolean(name));
+
+    let addedSkills: string[] = [];
+    if (skillIds.length > 0) {
+        const addResult = await addSkillsToProfile(profile_ID, skillIds);
+        if (addResult.success && skillNames.length > 0) {
+            await appendSkillsToField(profile_ID, skillNames);
+            addedSkills = skillNames;
+        }
+    }
+
+    return { link, addedSkills };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
@@ -32,6 +32,13 @@ interface ProfileResourceApiItem {
       course_id: string;
       course_name: string;
     } | null;
+    resource_skills: Array<{
+      skill_id: number;
+      skills: {
+        skillId: number;
+        name: string | null;
+      } | null;
+    }>;
   } | null;
   status: {
     status_id: number;
@@ -118,6 +125,35 @@ interface GrindPageProps {
   resourcesError: string | null;
 }
 
+/**
+ * Renders the skills associated with a profile resource as small pill badges,
+ * mirroring the skill-tag styling used on the YouTube video cards. Renders
+ * nothing when the resource has no named skills.
+ */
+function ResourceSkillBadges({ resource, className }: { resource: ProfileResourceApiItem["resource"]; className?: string }) {
+  const names = (resource?.resource_skills ?? [])
+    .map((link) => link.skills?.name)
+    .filter((name): name is string => Boolean(name));
+
+  if (names.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`flex flex-wrap gap-1${className ? ` ${className}` : ""}`}>
+      {names.map((name, i) => (
+        <span
+          key={i}
+          className="text-xs px-2 py-1 rounded font-medium"
+          style={{ backgroundColor: "rgba(184, 226, 212, 0.2)", color: "#15100c" }}
+        >
+          {name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function GrindPage({ profileId, targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
   // Each retrieved YouTube video for a target-role skill.
   const [skillVideos, setSkillVideos] = useState<
@@ -127,14 +163,16 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
 
-  // In-progress course resources for this profile, fetched from the API.
-  const [activeCourses, setActiveCourses] = useState<ProfileResourceApiItem[]>([]);
+  // All resource pairings for this profile (any type, any status), fetched
+  // once from profile_resource. The ongoing/completed course lists and the
+  // "already selected" lookup for the Add button are all derived from this.
+  const [profileResources, setProfileResources] = useState<ProfileResourceApiItem[]>([]);
   const [addingResourceId, setAddingResourceId] = useState<string | null>(null);
 
-  const loadActiveCourses = useCallback(async (signal?: AbortSignal) => {
+  const loadProfileResources = useCallback(async (signal?: AbortSignal) => {
     try {
       const response = await fetch(
-        `/api/profiles/${profileId}/resources?statusId=${IN_PROGRESS_STATUS_ID}&type=course`,
+        `/api/profiles/${profileId}/resources`,
         { method: "GET", signal },
       );
 
@@ -145,7 +183,7 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
         return;
       }
 
-      setActiveCourses(result.data ?? []);
+      setProfileResources(result.data ?? []);
     } catch {
       // Minimal handling: leave the list empty on failure.
     }
@@ -153,48 +191,42 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadActiveCourses(controller.signal);
+    void loadProfileResources(controller.signal);
 
     return () => {
       controller.abort();
     };
-  }, [loadActiveCourses]);
+  }, [loadProfileResources]);
 
-  // Completed course resources for this profile, fetched from the API.
-  const [completedCourses, setCompletedCourses] = useState<ProfileResourceApiItem[]>([]);
+  // Course pairings split by status, derived from the unified list.
+  const activeCourses = useMemo(
+    () =>
+      profileResources.filter(
+        (item) => item.resource?.resource_type === "course" && item.statusId === IN_PROGRESS_STATUS_ID,
+      ),
+    [profileResources],
+  );
+  const completedCourses = useMemo(
+    () =>
+      profileResources.filter(
+        (item) => item.resource?.resource_type === "course" && item.statusId === COMPLETED_STATUS_ID,
+      ),
+    [profileResources],
+  );
 
-  const loadCompletedCourses = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch(
-        `/api/profiles/${profileId}/resources?statusId=${COMPLETED_STATUS_ID}&type=course`,
-        { method: "GET", signal },
-      );
-
-      const result =
-        (await response.json()) as ProfileResourcesApiResponse;
-
-      if (!response.ok || !result.success) {
-        return;
-      }
-
-      setCompletedCourses(result.data ?? []);
-    } catch {
-      // Minimal handling: leave the list empty on failure.
+  // resource_id -> statusId, so a resource card can tell whether it is already
+  // in progress or completed for this profile.
+  const resourceStatusById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of profileResources) {
+      map.set(item.resource_id, item.statusId);
     }
-  }, [profileId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadCompletedCourses(controller.signal);
-
-    return () => {
-      controller.abort();
-    };
-  }, [loadCompletedCourses]);
+    return map;
+  }, [profileResources]);
 
   /**
    * Adds a resource to this profile with the "In Progress" status via the
-   * PUT endpoint, then refreshes the ongoing list so it shows up immediately.
+   * PUT endpoint, then refreshes the pairing list so it shows up immediately.
    */
   const handleAddResource = useCallback(async (resourceId: string) => {
     setAddingResourceId(resourceId);
@@ -208,13 +240,42 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
         return;
       }
 
-      await loadActiveCourses();
+      await loadProfileResources();
     } catch {
       // Minimal handling: no-op on failure.
     } finally {
       setAddingResourceId(null);
     }
-  }, [profileId, loadActiveCourses]);
+  }, [profileId, loadProfileResources]);
+
+  // Tracks the resource currently being marked complete, to disable its button.
+  const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
+
+  /**
+   * Marks an in-progress course complete: sets the profile_resource pairing to
+   * the "Complete" status and links the course's skills to the profile (via the
+   * complete=true flag). Refreshes both the ongoing and completed lists so the
+   * card moves between them immediately.
+   */
+  const handleCompleteCourse = useCallback(async (resourceId: string) => {
+    setCompletingResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${COMPLETED_STATUS_ID}&complete=true`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setCompletingResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
 
   /**
    * Retrieves a YouTube video for each skill associated with the profile's
@@ -739,17 +800,34 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
 
                       {/* Action Row */}
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleAddResource(resource.id)}
-                          disabled={addingResourceId === resource.id}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md disabled:opacity-60"
-                          style={{
-                            background: 'rgba(184, 226, 212, 0.2)',
-                            color: '#02746f',
-                          }}
-                        >
-                          {addingResourceId === resource.id ? 'Adding...' : 'Add'}
-                        </button>
+                        {(() => {
+                          const pairingStatus = resourceStatusById.get(resource.id);
+                          const isInProgress = pairingStatus === IN_PROGRESS_STATUS_ID;
+                          const isComplete = pairingStatus === COMPLETED_STATUS_ID;
+                          const alreadySelected = isInProgress || isComplete;
+                          const isAdding = addingResourceId === resource.id;
+                          const label = isComplete
+                            ? 'Completed'
+                            : isInProgress
+                            ? 'In Progress'
+                            : isAdding
+                            ? 'Adding...'
+                            : 'Add';
+                          return (
+                            <button
+                              onClick={() => handleAddResource(resource.id)}
+                              disabled={isAdding || alreadySelected}
+                              title={alreadySelected ? 'Already selected' : undefined}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+                              style={{
+                                background: 'rgba(184, 226, 212, 0.2)',
+                                color: '#02746f',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })()}
                         {resource.url && (
                           <a
                             href={resource.url}
@@ -962,6 +1040,7 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                               {course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
                             </div>
                           )}
+                          <ResourceSkillBadges resource={course.resource} className="mt-2" />
                           {isHov && course.resource?.description && (
                             <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
                               <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
@@ -972,6 +1051,15 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                               )}
                             </div>
                           )}
+                          <button
+                            onClick={() => handleCompleteCourse(course.resource_id)}
+                            disabled={completingResourceId === course.resource_id}
+                            className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                            style={{ backgroundColor: '#02746f', color: '#ffffff' }}
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
+                          </button>
                         </div>
                       );
                     })}
@@ -1068,14 +1156,14 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                     const title = course.resource?.courses
                       ? `${course.resource.courses.course_id} - ${name}`
                       : name;
-                    const isHov = hoveredItem === `course-done-${course.id}`;
+                    const key = `course-done-${course.id}`;
+                    const isOpen = expandedItem === key;
+                    const hasDetails = Boolean(course.resource?.description || course.resource?.source);
                     return (
                       <div
                         key={course.id}
-                        className="p-3 rounded-lg transition-all cursor-default"
-                        style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: `1px solid ${isHov ? 'rgba(2,116,111,0.25)' : 'transparent'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.06)' : 'none' }}
-                        onMouseEnter={() => setHoveredItem(`course-done-${course.id}`)}
-                        onMouseLeave={() => setHoveredItem(null)}
+                        className="p-3 rounded-lg transition-all"
+                        style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: '1px solid transparent' }}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
@@ -1084,10 +1172,23 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                         {course.expectedEndDate && (
                           <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
                         )}
-                        {isHov && course.resource?.description && (
+                        <ResourceSkillBadges resource={course.resource} className="mt-2" />
+                        {hasDetails && (
+                          <button
+                            onClick={() => setExpandedItem(isOpen ? null : key)}
+                            className="mt-2 flex items-center gap-1 text-xs font-medium"
+                            style={{ color: '#02746f' }}
+                          >
+                            {isOpen ? 'Hide details' : 'Expand'}
+                            {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
+                        {isOpen && hasDetails && (
                           <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(2,116,111,0.15)' }}>
-                            <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
-                            {course.resource.source && (
+                            {course.resource?.description && (
+                              <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+                            )}
+                            {course.resource?.source && (
                               <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
                                 <span>Source: <strong>{course.resource.source}</strong></span>
                               </div>
