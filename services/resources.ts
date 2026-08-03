@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 
 interface ResourceFilters {
-  type?: string;
+  type?: string | string[];
   source?: string;
   limit?: number;
 }
@@ -14,7 +14,7 @@ export async function getResources({
   const rows = await prisma.resources.findMany({
     where: {
       publication_status: "published",
-      resource_type: type,
+      resource_type: Array.isArray(type) ? { in: type } : type,
       source: source
         ? {
             equals: source,

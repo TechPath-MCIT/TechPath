@@ -92,11 +92,11 @@ model role_skills {
 }
 
 model Profile {
-  profile_ID       Int              @id @default(autoincrement())
+  profile_ID       Int                @id @default(autoincrement())
   fullname         String
   roleId           Int?
   highestDegree    String
-  isTest           Boolean          @default(false)
+  isTest           Boolean            @default(false)
   educationhistory Json?
   yearofexperience Int?
   profexperience   Json?
@@ -106,8 +106,9 @@ model Profile {
   location         String?
   Skills           Profile_Skills[]
   conversations    Conversation[]
-  resume           Resume?          @relation(fields: [resumeid], references: [resumeid])
-  dreamRole        Role?            @relation(fields: [roleId], references: [roleId])
+  resume           Resume?            @relation(fields: [resumeid], references: [resumeid])
+  dreamRole        Role?              @relation(fields: [roleId], references: [roleId])
+  Resources        profile_resource[]
   User             User?
 
   @@map("profile")
@@ -149,8 +150,7 @@ model Conversation {
   chatContext    Json     @map("chat_context")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
-
-  Profile Profile @relation(fields: [profileId], references: [profile_ID], onDelete: Cascade)
+  Profile        Profile  @relation(fields: [profileId], references: [profile_ID], onDelete: Cascade)
 
   @@index([profileId])
   @@map("conversations")
@@ -170,23 +170,44 @@ model resource_skills {
 }
 
 model resources {
-  resource_id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resource_id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   resource_type      String
   name               String
   description        String?
   source             String?
   source_url         String?
-  pricing_type       String            @default("unknown")
-  cost_amount        Decimal?          @db.Decimal(10, 2)
-  cost_currency      String?           @db.Char(3)
+  pricing_type       String             @default("unknown")
+  cost_amount        Decimal?           @db.Decimal(10, 2)
+  cost_currency      String?            @db.Char(3)
   pricing_note       String?
   duration_minutes   Int?
-  publication_status String            @default("published")
-  created_at         DateTime          @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  publication_status String             @default("published")
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime           @default(now()) @db.Timestamptz(6)
   courses            courses?
+  profile            profile_resource[]
   resource_skills    resource_skills[]
 
   @@index([source])
   @@index([resource_type, publication_status], map: "resources_type_status_idx")
+}
+
+model resource_status {
+  status         String
+  status_id      Int                @id @default(autoincrement())
+  profile_status profile_resource[]
+}
+
+model profile_resource {
+  id              Int             @id @default(autoincrement())
+  profile_id      Int
+  statusId        Int
+  startDate       DateTime?       @db.Date
+  expectedEndDate DateTime?       @db.Date
+  resource_id     String          @db.Uuid
+  profile         Profile         @relation(fields: [profile_id], references: [profile_ID])
+  resource        resources       @relation(fields: [resource_id], references: [resource_id])
+  status          resource_status @relation(fields: [statusId], references: [status_id])
+
+  @@index([profile_id])
 }
