@@ -60,7 +60,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
@@ -79,7 +79,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
   return {
     set_target_role: tool({
       description:
-        "Set the user's target/dream career role. Only call this when the user explicitly asks to set or change their target role to a specific role from the available list.",
+        "Set the user's target/dream career role. Only call this when the user explicitly asks to set or change their target role to a specific role from the available list. Do not call this when the user asks an informational question about a role, like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" — that's a request for advice, not a request to change their goal.",
       inputSchema: z.object({
         roleId: z
           .number()
