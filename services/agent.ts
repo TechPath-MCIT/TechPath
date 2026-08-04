@@ -1,5 +1,5 @@
 // services/agent.ts
-import { generateText, stepCountIs, tool } from 'ai';
+import { streamText, stepCountIs, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
 import type { ChatMessage } from '@/services/conversations';
@@ -347,19 +347,46 @@ export interface AgentReplyResult {
   profileUpdated: boolean;
 }
 
+const MUTATION_TOOL_NAMES = new Set([
+  'set_target_role',
+  'add_skills',
+  'remove_skills',
+  'set_location',
+  'set_years_of_experience',
+  'update_education',
+  'add_work_experience',
+]);
+
 /**
- * Generates the agent's reply for one turn of a conversation, given the
- * profile's context and the prior message history. The agent can call tools
- * to actually update the profile (target role, skills, location) when the
- * user explicitly asks for a change.
+ * Given the resolved toolResults from a generateText/streamText call, reports
+ * whether any mutation tool actually succeeded — used to decide whether the
+ * frontend needs to refresh the profile after this turn.
  */
-export async function generateAgentReply(
+export function didUpdateProfile(toolResults: readonly { toolName: string; output: unknown }[]): boolean {
+  return toolResults.some(
+    (toolResult) =>
+      MUTATION_TOOL_NAMES.has(toolResult.toolName) &&
+      typeof toolResult.output === 'object' &&
+      toolResult.output !== null &&
+      (toolResult.output as { success?: boolean }).success === true,
+  );
+}
+
+/**
+ * Starts streaming the agent's reply for one turn of a conversation, given
+ * the profile's context and the prior message history. The agent can call
+ * tools to actually update the profile (target role, skills, location) when
+ * the user explicitly asks for a change. Callers consume `.textStream` for
+ * incremental text, and await `.text` / `.toolResults` once it's drained for
+ * the final full reply and whether the profile was updated.
+ */
+export function streamAgentReply(
   context: AgentProfileContext,
   history: ChatMessage[],
   message: string,
   profileId: number,
-): Promise<AgentReplyResult> {
-  const result = await generateText({
+) {
+  return streamText({
     model: google('gemini-2.5-flash'),
     system: buildSystemPrompt(context),
     messages: [
@@ -369,24 +396,4 @@ export async function generateAgentReply(
     tools: buildAgentTools(profileId, context.availableRoles),
     stopWhen: stepCountIs(6),
   });
-
-  const MUTATION_TOOL_NAMES = new Set([
-    'set_target_role',
-    'add_skills',
-    'remove_skills',
-    'set_location',
-    'set_years_of_experience',
-    'update_education',
-    'add_work_experience',
-  ]);
-
-  const profileUpdated = result.toolResults.some(
-    (toolResult) =>
-      MUTATION_TOOL_NAMES.has(toolResult.toolName) &&
-      typeof toolResult.output === 'object' &&
-      toolResult.output !== null &&
-      (toolResult.output as { success?: boolean }).success === true,
-  );
-
-  return { reply: result.text, profileUpdated };
 }

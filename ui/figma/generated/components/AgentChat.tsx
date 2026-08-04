@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 
@@ -222,22 +222,13 @@ export function AgentChat({
               </div>
             </div>
           ))}
-          {isSending && (
+          {isSending && messages[messages.length - 1]?.role !== 'agent' && (
             <div className="flex justify-start">
               <div
                 className="flex max-w-[80%] items-center gap-2 rounded-2xl rounded-tl-sm px-3 py-2"
                 style={{ background: '#f4f1f2', color: '#55371e' }}
               >
                 <p className="text-sm">Thinking…</p>
-                {onCancelSend && (
-                  <button
-                    onClick={onCancelSend}
-                    className="text-xs font-medium underline underline-offset-2 hover:opacity-70"
-                    style={{ color: '#02746f' }}
-                  >
-                    Cancel
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -266,17 +257,31 @@ export function AgentChat({
               disabled={isSending}
             />
 
-            <button
-              onClick={onSend}
-              disabled={!inputValue.trim() || isSending}
-              className="p-3 rounded-full transition-all disabled:opacity-50"
-              style={{
-                backgroundColor: '#02746f',
-                color: '#ffffff',
-              }}
-            >
-              <Send className="w-5 h-5" />
-            </button>
+            {isSending && onCancelSend ? (
+              <button
+                onClick={onCancelSend}
+                title="Stop generating"
+                className="p-3 rounded-full transition-all"
+                style={{
+                  backgroundColor: '#02746f',
+                  color: '#ffffff',
+                }}
+              >
+                <Square className="w-5 h-5" fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                onClick={onSend}
+                disabled={!inputValue.trim() || isSending}
+                className="p-3 rounded-full transition-all disabled:opacity-50"
+                style={{
+                  backgroundColor: '#02746f',
+                  color: '#ffffff',
+                }}
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            )}
           </div>
           <p className="text-xs mt-2 text-center" style={{ color: '#55371e' }}>
             Try: "Help me learn Python" • "Update my profile" • "What's the salary for ML engineers?"
