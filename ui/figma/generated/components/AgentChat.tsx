@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, Mic, MicOff, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 
 export interface AgentMessage {
   id: string;
@@ -165,7 +167,13 @@ export function AgentChat({
                   color: message.role === 'user' ? '#ffffff' : '#15100c',
                 }}
               >
-                <p className="text-sm whitespace-pre-line leading-snug">{message.content}</p>
+                {message.role === 'agent' ? (
+                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0">
+                    <ReactMarkdown remarkPlugins={[remarkBreaks]}>{message.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-line leading-snug">{message.content}</p>
+                )}
                 <p
                   className="text-xs mt-1"
                   style={{
