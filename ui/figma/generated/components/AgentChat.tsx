@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 
@@ -28,6 +28,7 @@ interface AgentChatProps {
   onCancelSend?: () => void;
   onSelectConversation: (conversationId: string) => void;
   onNewConversation: () => void;
+  onDeleteConversation?: (conversationId: string) => void;
   isSending?: boolean;
   errorMessage?: string | null;
 }
@@ -42,10 +43,12 @@ export function AgentChat({
   onCancelSend,
   onSelectConversation,
   onNewConversation,
+  onDeleteConversation,
   isSending = false,
   errorMessage = null,
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,30 +83,76 @@ export function AgentChat({
           </h3>
           <div className="space-y-2">
             {conversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                onClick={() => onSelectConversation(conversation.id)}
-                className="w-full text-left p-3 rounded-lg transition-all hover:bg-stone-50"
-                style={{
-                  backgroundColor: currentConversationId === conversation.id ? 'rgba(38, 117, 95, 0.1)' : 'transparent',
-                  borderLeft: currentConversationId === conversation.id ? '3px solid #02746f' : '3px solid transparent',
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="w-4 h-4 mt-1 flex-shrink-0" style={{ color: '#55371e' }} />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium mb-1 truncate" style={{ color: '#15100c' }}>
-                      {conversation.title}
-                    </h4>
-                    <p className="text-xs truncate" style={{ color: '#55371e' }}>
-                      {conversation.lastMessage}
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: '#55371e' }}>
-                      {conversation.timestamp.toLocaleDateString()}
-                    </p>
+              <div key={conversation.id} className="relative group">
+                <button
+                  onClick={() => onSelectConversation(conversation.id)}
+                  className="w-full text-left p-3 pr-9 rounded-lg transition-all hover:bg-stone-50"
+                  style={{
+                    backgroundColor: currentConversationId === conversation.id ? 'rgba(38, 117, 95, 0.1)' : 'transparent',
+                    borderLeft: currentConversationId === conversation.id ? '3px solid #02746f' : '3px solid transparent',
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <MessageSquare className="w-4 h-4 mt-1 flex-shrink-0" style={{ color: '#55371e' }} />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium mb-1 truncate" style={{ color: '#15100c' }}>
+                        {conversation.title}
+                      </h4>
+                      <p className="text-xs truncate" style={{ color: '#55371e' }}>
+                        {conversation.lastMessage}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#55371e' }}>
+                        {conversation.timestamp.toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                {onDeleteConversation && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(conversation.id);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-stone-200"
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                  </button>
+                )}
+                {confirmDeleteId === conversation.id && (
+                  <div
+                    className="absolute inset-0 z-10 flex items-center justify-between gap-2 px-3 rounded-lg"
+                    style={{ backgroundColor: '#fff', border: '1px solid rgba(2, 116, 111, 0.3)' }}
+                  >
+                    <span className="text-xs truncate" style={{ color: '#15100c' }}>
+                      Delete this conversation?
+                    </span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(null);
+                          onDeleteConversation?.(conversation.id);
+                        }}
+                        className="px-2 py-1 rounded-md text-xs font-medium"
+                        style={{ backgroundColor: '#ef4444', color: '#ffffff' }}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(null);
+                        }}
+                        className="px-2 py-1 rounded-md text-xs font-medium"
+                        style={{ backgroundColor: 'rgba(184, 226, 212, 0.2)', color: '#02746f' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>

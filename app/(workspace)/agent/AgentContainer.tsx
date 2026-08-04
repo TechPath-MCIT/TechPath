@@ -237,6 +237,27 @@ export default function AgentContainer() {
     abortControllerRef.current?.abort("cancelled");
   }, []);
 
+  const handleDeleteConversation = useCallback(
+    async (id: string) => {
+      const response = await fetch(
+        `/api/profiles/${profile.profileId}/conversations?conversationId=${id}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) return;
+
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+
+      if (currentConversationId === id) {
+        conversationIdRef.current = null;
+        setCurrentConversationId("new");
+        setMessages([GREETING]);
+        setError(null);
+      }
+    },
+    [currentConversationId, profile.profileId],
+  );
+
   return (
     <div className="p-6" style={{ height: "calc(100vh - 72px)" }}>
       <AgentChat
@@ -249,6 +270,7 @@ export default function AgentContainer() {
         onCancelSend={handleCancelSend}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
         isSending={isSending}
         errorMessage={error}
       />
