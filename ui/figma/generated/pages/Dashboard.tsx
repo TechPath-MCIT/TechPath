@@ -257,6 +257,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
         <GrindPage
           profileId={0}
           targetRole={userData.targetRole?.target ?? ""}
+          skills={userData.skills}
+          experience={userData.experience}
           resources={[]}
           isLoadingResources={false}
           resourcesError={null}

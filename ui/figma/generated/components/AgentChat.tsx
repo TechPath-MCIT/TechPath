@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Mic, MicOff, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 
 export interface AgentMessage {
   id: string;
@@ -43,25 +45,12 @@ export function AgentChat({
   isSending = false,
   errorMessage = null,
 }: AgentChatProps) {
-  const [isRecording, setIsRecording] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  const toggleRecording = () => {
-    if (!isRecording) {
-      setIsRecording(true);
-      setTimeout(() => {
-        setIsRecording(false);
-        onInputChange("How can I improve my Python skills?");
-      }, 2000);
-    } else {
-      setIsRecording(false);
-    }
-  };
 
   return (
     <div className="h-full bg-white rounded-2xl shadow-md flex">
@@ -165,7 +154,13 @@ export function AgentChat({
                   color: message.role === 'user' ? '#ffffff' : '#15100c',
                 }}
               >
-                <p className="text-sm whitespace-pre-line leading-snug">{message.content}</p>
+                {message.role === 'agent' ? (
+                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0">
+                    <ReactMarkdown remarkPlugins={[remarkBreaks]}>{message.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-line leading-snug">{message.content}</p>
+                )}
                 <p
                   className="text-xs mt-1"
                   style={{
@@ -208,67 +203,23 @@ export function AgentChat({
             </p>
           )}
           <div className="flex items-center gap-3">
-            {/* Voice Input with Volume Indicator */}
-            <div className="relative">
-              <button
-                onClick={toggleRecording}
-                className={`p-3 rounded-full transition-all relative z-10 ${
-                  isRecording ? 'animate-pulse' : ''
-                }`}
-                style={{
-                  backgroundColor: isRecording ? '#ef4444' : '#f4f1f2',
-                  color: isRecording ? '#ffffff' : '#55371e',
-                }}
-                title={isRecording ? 'Stop recording' : 'Start voice input'}
-              >
-                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-
-              {/* Volume Indicator Rings */}
-              {isRecording && (
-                <>
-                  <div
-                    className="absolute inset-0 rounded-full animate-ping opacity-75"
-                    style={{
-                      backgroundColor: '#ef4444',
-                      animationDuration: '1s',
-                    }}
-                  />
-                  <div
-                    className="absolute inset-[-8px] rounded-full animate-pulse opacity-50"
-                    style={{
-                      border: '2px solid #ef4444',
-                      animationDuration: '1.5s',
-                    }}
-                  />
-                  <div
-                    className="absolute inset-[-16px] rounded-full animate-pulse opacity-30"
-                    style={{
-                      border: '2px solid #ef4444',
-                      animationDuration: '2s',
-                    }}
-                  />
-                </>
-              )}
-            </div>
-
             <input
               type="text"
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onSend()}
-              placeholder={isRecording ? 'Listening...' : 'Ask me anything about your career...'}
+              placeholder="Ask me anything about your career..."
               className="flex-1 px-4 py-3 rounded-xl border-2 transition-colors"
               style={{
-                borderColor: isRecording ? '#ef4444' : 'rgba(21, 16, 12, 0.1)',
+                borderColor: 'rgba(21, 16, 12, 0.1)',
                 outline: 'none',
               }}
-              disabled={isRecording || isSending}
+              disabled={isSending}
             />
 
             <button
               onClick={onSend}
-              disabled={!inputValue.trim() || isRecording || isSending}
+              disabled={!inputValue.trim() || isSending}
               className="p-3 rounded-full transition-all disabled:opacity-50"
               style={{
                 backgroundColor: '#02746f',

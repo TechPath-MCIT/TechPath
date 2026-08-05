@@ -104,6 +104,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
             role.role ? [{ roleId: role.roleId, name: role.role }] : [],
         );
 
+        // Statuses match the "In Progress" (1) / "Complete" (2) convention
+        // already used by GrindContainer/GrindPage for profile_resource rows.
+        const IN_PROGRESS_STATUS_ID = 1;
+        const COMPLETED_STATUS_ID = 2;
+
+        const profileCourses = await profiles.getResourcesByProfile(profile_id, undefined, "course");
+        const courseName = (item: (typeof profileCourses)[number]) =>
+            item.resource?.courses
+                ? `${item.resource.courses.course_id} - ${item.resource.name}`
+                : item.resource?.name ?? null;
+
+        const coursesInProgress = profileCourses
+            .filter((item) => item.statusId === IN_PROGRESS_STATUS_ID)
+            .map(courseName)
+            .filter((name): name is string => Boolean(name));
+        const coursesCompleted = profileCourses
+            .filter((item) => item.statusId === COMPLETED_STATUS_ID)
+            .map(courseName)
+            .filter((name): name is string => Boolean(name));
+
         const agentContext: AgentProfileContext = {
             name: profile.fullname ?? "there",
             currentRole,
@@ -117,6 +137,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
             targetRole: targetRole?.role ?? null,
             matchScore,
             availableRoles,
+            coursesInProgress,
+            coursesCompleted,
         };
 
         const { reply, profileUpdated } = await generateAgentReply(agentContext, history, message, profile_id);

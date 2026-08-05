@@ -1,13 +1,57 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
-  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download
+  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download, Search, X
 } from 'lucide-react';
 import { sampleUserProfile } from "../data/learningResources";
 
 // Virtual resource source for YouTube videos fetched per target-role skill.
 const YOUTUBE_SOURCE = "YouTube";
+
+// resource_status.status_id that represents an "In Progress" resource.
+const IN_PROGRESS_STATUS_ID = 1;
+
+// resource_status.status_id that represents a "Complete" resource.
+const COMPLETED_STATUS_ID = 2;
+
+interface ProfileResourceApiItem {
+  id: number;
+  resource_id: string;
+  statusId: number;
+  startDate: string | null;
+  expectedEndDate: string | null;
+  resource: {
+    resource_id: string;
+    resource_type: string;
+    name: string;
+    description: string | null;
+    source: string | null;
+    source_url: string | null;
+    courses: {
+      course_id: string;
+      course_name: string;
+    } | null;
+    resource_skills: Array<{
+      skill_id: number;
+      skills: {
+        skillId: number;
+        name: string | null;
+      } | null;
+    }>;
+  } | null;
+  status: {
+    status_id: number;
+    status: string;
+  } | null;
+}
+
+interface ProfileResourcesApiResponse {
+  success: boolean;
+  data?: ProfileResourceApiItem[];
+  error?: string;
+}
 
 interface ResourceApiItem {
   id: string;
@@ -77,12 +121,45 @@ interface VideoApiResponse {
 interface GrindPageProps {
   profileId: number;
   targetRole: string;
+  skills: string[];
+  experience: string[];
   resources: ResourceApiItem[];
   isLoadingResources: boolean;
   resourcesError: string | null;
 }
 
-export function GrindPage({ profileId, targetRole, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+/**
+ * Renders the skills associated with a profile resource as small pill badges,
+ * mirroring the skill-tag styling used on the YouTube video cards. Renders
+ * nothing when the resource has no named skills.
+ */
+function ResourceSkillBadges({ resource, className }: { resource: ProfileResourceApiItem["resource"]; className?: string }) {
+  const names = (resource?.resource_skills ?? [])
+    .map((link) => link.skills?.name)
+    .filter((name): name is string => Boolean(name));
+
+  if (names.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`flex flex-wrap gap-1${className ? ` ${className}` : ""}`}>
+      {names.map((name, i) => (
+        <span
+          key={i}
+          className="text-xs px-2 py-1 rounded font-medium"
+          style={{ backgroundColor: "rgba(184, 226, 212, 0.2)", color: "#15100c" }}
+        >
+          {name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function GrindPage({ profileId, targetRole, skills, experience, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+  const router = useRouter();
+
   // Each retrieved YouTube video for a target-role skill.
   const [skillVideos, setSkillVideos] = useState<
     { skillId: number; skillName: string; videoId: string }[]
@@ -90,6 +167,125 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
+
+  // All resource pairings for this profile (any type, any status), fetched
+  // once from profile_resource. The ongoing/completed course lists and the
+  // "already selected" lookup for the Add button are all derived from this.
+  const [profileResources, setProfileResources] = useState<ProfileResourceApiItem[]>([]);
+  const [addingResourceId, setAddingResourceId] = useState<string | null>(null);
+
+  const loadProfileResources = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources`,
+        { method: "GET", signal },
+      );
+
+      const result =
+        (await response.json()) as ProfileResourcesApiResponse;
+
+      if (!response.ok || !result.success) {
+        return;
+      }
+
+      setProfileResources(result.data ?? []);
+    } catch {
+      // Minimal handling: leave the list empty on failure.
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadProfileResources(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadProfileResources]);
+
+  // Course pairings split by status, derived from the unified list.
+  const activeCourses = useMemo(
+    () =>
+      profileResources.filter(
+        (item) => item.resource?.resource_type === "course" && item.statusId === IN_PROGRESS_STATUS_ID,
+      ),
+    [profileResources],
+  );
+  const completedCourses = useMemo(
+    () =>
+      profileResources.filter(
+        (item) => item.resource?.resource_type === "course" && item.statusId === COMPLETED_STATUS_ID,
+      ),
+    [profileResources],
+  );
+
+  // resource_id -> statusId, so a resource card can tell whether it is already
+  // in progress or completed for this profile.
+  const resourceStatusById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of profileResources) {
+      map.set(item.resource_id, item.statusId);
+    }
+    return map;
+  }, [profileResources]);
+
+  /**
+   * Adds a resource to this profile with the "In Progress" status via the
+   * PUT endpoint, then refreshes the pairing list so it shows up immediately.
+   */
+  const handleAddResource = useCallback(async (resourceId: string) => {
+    setAddingResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${IN_PROGRESS_STATUS_ID}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setAddingResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
+
+  // Tracks the resource currently being marked complete, to disable its button.
+  const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
+
+  /**
+   * Marks an in-progress course complete: sets the profile_resource pairing to
+   * the "Complete" status and links the course's skills to the profile (via the
+   * complete=true flag). Refreshes both the ongoing and completed lists so the
+   * card moves between them immediately.
+   */
+  const handleCompleteCourse = useCallback(async (resourceId: string) => {
+    setCompletingResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${COMPLETED_STATUS_ID}&complete=true`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      // Completing a course rolls its skills onto the profile, so refresh
+      // the shared workspace profile data — this page's own Skills/Experience
+      // tabs are driven by that same data via props, so no separate refetch
+      // is needed here.
+      router.refresh();
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setCompletingResourceId(null);
+    }
+  }, [profileId, loadProfileResources, router]);
 
   /**
    * Retrieves a YouTube video for each skill associated with the profile's
@@ -178,13 +374,16 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
   const [sourceFilters, setSourceFilters] = useState<string[]>([]);
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showAgentInput, setShowAgentInput] = useState(false);
   const [agentInputText, setAgentInputText] = useState('');
+  const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
+  const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
+  const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
   const [uploadedResumes, setUploadedResumes] = useState<{ name: string; uploadDate: string; url: string }[]>([
     { name: 'Resume_2026_May.pdf', uploadDate: '2026-05-15', url: '#' },
     { name: 'Resume_2025_Dec.pdf', uploadDate: '2025-12-10', url: '#' },
@@ -250,27 +449,18 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       instructor: instructor || undefined,
     };
   })
+  .filter((resource) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    return (
+      resource.title.toLowerCase().includes(query) ||
+      resource.skills.some((skill) => skill.toLowerCase().includes(query))
+    );
+  })
   .sort((a, b) => a.title.localeCompare(b.title));
 
   const userProfile = sampleUserProfile;
-
-  // Sample active courses
-  const activeCourses = [
-    {
-      id: 'active-1',
-      title: 'CIT 5960 - Algorithms & Computation',
-      startDate: '2026-05-01',
-      endDate: '2026-08-15',
-      progress: 35,
-    },
-    {
-      id: 'active-2',
-      title: 'ESE 5410 - Machine Learning for Data Science',
-      startDate: '2026-05-01',
-      endDate: '2026-08-15',
-      progress: 28,
-    },
-  ];
 
   // Sample upcoming activities
   const upcomingActivities = [
@@ -300,14 +490,40 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     },
   ];
 
-  // Sort skills by proficiency
-  const sortedSkills = [...userProfile.skills].sort((a, b) => b.proficiency - a.proficiency);
+  const handleAgentSubmit = async () => {
+    const message = agentInputText.trim();
+    if (!message) return;
 
-  const handleAgentSubmit = () => {
-    // In real app, this would send to the Agent
-    console.log('Sending to Agent:', agentInputText);
-    setAgentInputText('');
-    setShowAgentInput(false);
+    setIsSendingAgentUpdate(true);
+    setAgentUpdateError(null);
+    setAgentUpdateReply(null);
+
+    try {
+      const response = await fetch(`/api/profiles/${profileId}/agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+
+      const body = await response.json();
+
+      if (!response.ok || !body.success) {
+        throw new Error(body.error ?? "Failed to send update to the agent.");
+      }
+
+      setAgentUpdateReply(body.reply);
+      setAgentInputText('');
+
+      if (body.profileUpdated) {
+        router.refresh();
+      }
+    } catch (error) {
+      setAgentUpdateError(
+        error instanceof Error ? error.message : "Failed to send update to the agent.",
+      );
+    } finally {
+      setIsSendingAgentUpdate(false);
+    }
   };
 
   const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -356,6 +572,14 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
     new Set(resources.map((resource) => resource.type)),
   ).sort();
 
+  // The course search bar only filters combinedResources (MCIT courses) —
+  // it has no effect on the separately-rendered YouTube video list, so hide
+  // it whenever the course list itself isn't visible (i.e. only "YouTube" is
+  // selected as an active source filter).
+  const coursesVisible =
+    sourceFilters.length === 0 ||
+    sourceFilters.some((source) => source !== YOUTUBE_SOURCE);
+
   return (
     <div className="h-full grid grid-cols-12 gap-6" style={{ maxHeight: 'calc(100vh - 120px)' }}>
       {/* Left Panel - Resources */}
@@ -373,7 +597,7 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
             </div>
             <button
               onClick={() => setShowFilterPanel(!showFilterPanel)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md flex-shrink-0"
               style={{
                 background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
                 color: showFilterPanel ? '#ffffff' : '#02746f',
@@ -384,6 +608,32 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
               {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
+
+          {coursesVisible && (
+            <div className="relative mb-4">
+              <Search
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: '#55371e' }}
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search MCIT courses…"
+                className="w-full pl-9 pr-8 py-2 rounded-lg text-sm border outline-none"
+                style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Filter Panel */}
           {showFilterPanel && (
@@ -631,7 +881,35 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                       </div>
 
                       {/* Action Row */}
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-2">
+                        {(() => {
+                          const pairingStatus = resourceStatusById.get(resource.id);
+                          const isInProgress = pairingStatus === IN_PROGRESS_STATUS_ID;
+                          const isComplete = pairingStatus === COMPLETED_STATUS_ID;
+                          const alreadySelected = isInProgress || isComplete;
+                          const isAdding = addingResourceId === resource.id;
+                          const label = isComplete
+                            ? 'Completed'
+                            : isInProgress
+                            ? 'In Progress'
+                            : isAdding
+                            ? 'Adding...'
+                            : 'Add';
+                          return (
+                            <button
+                              onClick={() => handleAddResource(resource.id)}
+                              disabled={isAdding || alreadySelected}
+                              title={alreadySelected ? 'Already selected' : undefined}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
+                              style={{
+                                background: 'rgba(184, 226, 212, 0.2)',
+                                color: '#02746f',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })()}
                         {resource.url && (
                           <a
                             href={resource.url}
@@ -660,11 +938,81 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
       {/* Right Panel - My Progress */}
       <div className="col-span-7 bg-white rounded-2xl shadow-md flex flex-col overflow-hidden" style={{ maxHeight: '100%' }}>
         {/* Profile Header */}
-        <div className="px-6 pt-6 pb-3">
+        <div className="px-6 pt-6 pb-3 flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold" style={{ color: '#15100c' }}>
             My Progress
           </h2>
+          {/* Applies to the whole profile, not any specific tab below */}
+          <button
+            onClick={() => setShowAgentInput(!showAgentInput)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md flex-shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
+              color: '#ffffff',
+            }}
+          >
+            <Edit3 className="w-4 h-4" />
+            <span className="text-sm font-medium">Update with AI</span>
+          </button>
         </div>
+
+        {/* Quick Update — applies to the whole profile, shown right below
+            the header rather than inside tab content, since it isn't
+            scoped to any tab */}
+        {showAgentInput && (
+          <div className="mx-6 mb-3 p-4 rounded-lg space-y-3" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)', border: '1px solid rgba(2, 116, 111, 0.3)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4" style={{ color: '#02746f' }} />
+              <span className="text-sm font-semibold" style={{ color: '#15100c' }}>
+                Quick Update
+              </span>
+            </div>
+            <textarea
+              value={agentInputText}
+              onChange={e => setAgentInputText(e.target.value)}
+              placeholder="Tell the AI what to update... e.g., 'Add AWS to my skills' or 'Set my target role to Data Scientist' or 'I now have 3 years of experience'"
+              disabled={isSendingAgentUpdate}
+              className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
+              style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
+            />
+            {agentUpdateError && (
+              <p className="text-xs" style={{ color: '#dc2626' }}>
+                {agentUpdateError}
+              </p>
+            )}
+            {agentUpdateReply && (
+              <p className="text-xs p-2 rounded" style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}>
+                {agentUpdateReply}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={handleAgentSubmit}
+                disabled={isSendingAgentUpdate || !agentInputText.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all disabled:opacity-50"
+                style={{
+                  background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
+                  color: '#ffffff',
+                }}
+              >
+                <Send className="w-4 h-4" />
+                <span className="text-sm font-medium">{isSendingAgentUpdate ? 'Sending…' : 'Send to AI'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowAgentInput(false);
+                  setAgentUpdateReply(null);
+                  setAgentUpdateError(null);
+                }}
+                disabled={isSendingAgentUpdate}
+                className="px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                style={{ color: '#55371e' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Profile Tabs */}
         <div className="flex border-b px-6" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
@@ -751,58 +1099,6 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Edit Button - Always visible */}
-          <button
-            onClick={() => setShowAgentInput(!showAgentInput)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-all hover:shadow-md mb-6"
-            style={{
-              background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
-              color: '#ffffff',
-            }}
-          >
-            <Edit3 className="w-4 h-4" />
-            <span className="text-sm font-medium">Update with AI</span>
-          </button>
-
-          {/* Agent Input */}
-          {showAgentInput && (
-            <div className="p-4 rounded-lg space-y-3 mb-6" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)', border: '1px solid rgba(2, 116, 111, 0.3)' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4" style={{ color: '#02746f' }} />
-                <span className="text-sm font-semibold" style={{ color: '#15100c' }}>
-                  Quick Update
-                </span>
-              </div>
-              <textarea
-                value={agentInputText}
-                onChange={e => setAgentInputText(e.target.value)}
-                placeholder="Tell the AI what to update... e.g., 'Add AWS certification obtained on June 1st, 2026' or 'I completed the Deep Learning course'"
-                className="w-full px-3 py-2 rounded-lg border resize-none text-sm"
-                style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={handleAgentSubmit}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all"
-                  style={{
-                    background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)',
-                    color: '#ffffff',
-                  }}
-                >
-                  <Send className="w-4 h-4" />
-                  <span className="text-sm font-medium">Send to AI</span>
-                </button>
-                <button
-                  onClick={() => setShowAgentInput(false)}
-                  className="px-4 py-2 rounded-lg text-sm transition-colors"
-                  style={{ color: '#55371e' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Ongoing Tab */}
           {profileSection === 'ongoing' && (
             <div className="space-y-6">
@@ -815,43 +1111,55 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                   </h3>
                   <div className="space-y-2">
                     {activeCourses.map(course => {
-                      const res = combinedResources.find(r => r.title.includes(course.title.split(' - ')[0]));
-                      const isHov = hoveredItem === course.id;
+                      const isHov = hoveredItem === `course-${course.id}`;
+                      const name = course.resource?.name ?? `Resource ${course.resource_id}`;
+                      const title = course.resource?.courses
+                        ? `${course.resource.courses.course_id} - ${name}`
+                        : name;
                       return (
                         <div
                           key={course.id}
                           className="relative p-3 rounded-lg transition-all cursor-default"
                           style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'rgba(253,211,87,0.3)'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
-                          onMouseEnter={() => setHoveredItem(course.id)}
+                          onMouseEnter={() => setHoveredItem(`course-${course.id}`)}
                           onMouseLeave={() => setHoveredItem(null)}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <BookOpen className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
-                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{course.title}</span>
+                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                             </div>
-                            <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{course.progress}%</span>
+                            {course.status?.status && (
+                              <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{course.status.status}</span>
+                            )}
                           </div>
-                          <div className="w-full h-1.5 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: 'rgba(184,226,212,0.3)' }}>
-                            <div className="h-full rounded-full" style={{ width: `${course.progress}%`, background: 'linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)' }} />
-                          </div>
-                          <div className="text-xs" style={{ color: '#55371e' }}>
-                            {new Date(course.startDate).toLocaleDateString()} – {new Date(course.endDate).toLocaleDateString()}
-                          </div>
-                          {isHov && res && (
-                            <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
-                              <p className="text-xs" style={{ color: '#55371e' }}>{res.description}</p>
-                              <div className="flex flex-wrap gap-1">
-                                {res.skills.slice(0, 4).map((s, i) => (
-                                  <span key={i} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(184,226,212,0.3)', color: '#15100c' }}>{s}</span>
-                                ))}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                                <span>Source: <strong>{res.source}</strong></span>
-                                {res.instructor && <span>By {res.instructor}</span>}
-                              </div>
+                          {(course.startDate || course.expectedEndDate) && (
+                            <div className="text-xs" style={{ color: '#55371e' }}>
+                              {course.startDate ? new Date(course.startDate).toLocaleDateString() : '—'}
+                              {' – '}
+                              {course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
                             </div>
                           )}
+                          <ResourceSkillBadges resource={course.resource} className="mt-2" />
+                          {isHov && course.resource?.description && (
+                            <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
+                              <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+                              {course.resource.source && (
+                                <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
+                                  <span>Source: <strong>{course.resource.source}</strong></span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleCompleteCourse(course.resource_id)}
+                            disabled={completingResourceId === course.resource_id}
+                            className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                            style={{ backgroundColor: '#02746f', color: '#ffffff' }}
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
+                          </button>
                         </div>
                       );
                     })}
@@ -928,59 +1236,70 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
                     <CheckCircle className="w-4 h-4" style={{ color: '#02746f' }} />
                     Completed Courses
                   </h3>
-                  {userProfile.completedCourses.length > 2 && (
+                  {completedCourses.length > 2 && (
                     <button
                       onClick={() => setShowAllCompleted(!showAllCompleted)}
                       className="text-xs font-medium flex items-center gap-1"
                       style={{ color: '#02746f' }}
                     >
-                      {showAllCompleted ? 'Show Less' : `View All (${userProfile.completedCourses.length})`}
+                      {showAllCompleted ? 'Show Less' : `View All (${completedCourses.length})`}
                       {showAllCompleted ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
                   )}
                 </div>
+                {completedCourses.length === 0 ? (
+                  <p className="text-xs" style={{ color: '#55371e' }}>No completed courses yet.</p>
+                ) : (
                 <div className="space-y-2">
-                  {(['Introduction to Python Programming', 'Data Structures & Algorithms'] as const).slice(0, showAllCompleted ? undefined : 2).map((title, idx) => {
-                    const enrolled = userProfile.completedCourses[idx];
-                    if (!enrolled) return null;
-                    const res = combinedResources.find(r => r.title.toLowerCase().includes('python') && idx === 0 || r.title.toLowerCase().includes('algorithm') && idx === 1);
-                    const isHov = hoveredItem === `course-done-${idx}`;
+                  {(showAllCompleted ? completedCourses : completedCourses.slice(0, 2)).map(course => {
+                    const name = course.resource?.name ?? `Resource ${course.resource_id}`;
+                    const title = course.resource?.courses
+                      ? `${course.resource.courses.course_id} - ${name}`
+                      : name;
+                    const key = `course-done-${course.id}`;
+                    const isOpen = expandedItem === key;
+                    const hasDetails = Boolean(course.resource?.description || course.resource?.source);
                     return (
                       <div
-                        key={idx}
-                        className="p-3 rounded-lg transition-all cursor-default"
-                        style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: `1px solid ${isHov ? 'rgba(2,116,111,0.25)' : 'transparent'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.06)' : 'none' }}
-                        onMouseEnter={() => setHoveredItem(`course-done-${idx}`)}
-                        onMouseLeave={() => setHoveredItem(null)}
+                        key={course.id}
+                        className="p-3 rounded-lg transition-all"
+                        style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: '1px solid transparent' }}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
                           <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                         </div>
-                        <div className="text-xs" style={{ color: '#55371e' }}>Completed: {enrolled.completionDate}</div>
-                        {isHov && enrolled.notes && (
-                          <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: 'rgba(2,116,111,0.15)', color: '#55371e' }}>
-                            {enrolled.notes}
-                          </div>
+                        {course.expectedEndDate && (
+                          <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
                         )}
-                        {isHov && res && (
+                        <ResourceSkillBadges resource={course.resource} className="mt-2" />
+                        {hasDetails && (
+                          <button
+                            onClick={() => setExpandedItem(isOpen ? null : key)}
+                            className="mt-2 flex items-center gap-1 text-xs font-medium"
+                            style={{ color: '#02746f' }}
+                          >
+                            {isOpen ? 'Hide details' : 'Expand'}
+                            {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
+                        {isOpen && hasDetails && (
                           <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(2,116,111,0.15)' }}>
-                            <p className="text-xs" style={{ color: '#55371e' }}>{res.description}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {res.skills.slice(0, 4).map((s, i) => (
-                                <span key={i} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(184,226,212,0.3)', color: '#15100c' }}>{s}</span>
-                              ))}
-                            </div>
-                            <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                              <span>Source: <strong>{res.source}</strong></span>
-                              {res.instructor && <span>By {res.instructor}</span>}
-                            </div>
+                            {course.resource?.description && (
+                              <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+                            )}
+                            {course.resource?.source && (
+                              <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
+                                <span>Source: <strong>{course.resource.source}</strong></span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -988,78 +1307,19 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
           {/* Skills Tab */}
           {profileSection === 'skills' && (
             <div className="space-y-2">
-              {sortedSkills.map((skill, idx) => {
-                const level =
-                  skill.proficiency >= 80 ? { label: 'Expert', color: '#02746f', bg: 'rgba(2,116,111,0.1)' }
-                  : skill.proficiency >= 60 ? { label: 'Proficient', color: '#059669', bg: 'rgba(5,150,105,0.1)' }
-                  : skill.proficiency >= 40 ? { label: 'Intermediate', color: '#b45309', bg: 'rgba(253,211,87,0.2)' }
-                  : { label: 'Beginner', color: '#55371e', bg: 'rgba(21,16,12,0.06)' };
-
-                const relatedCourses = combinedResources
-                  .filter((resource) =>
-                    resource.skills.some(
-                      (resourceSkill) =>
-                        resourceSkill
-                          .toLowerCase()
-                          .includes(skill.name.toLowerCase()) ||
-                        skill.name
-                          .toLowerCase()
-                          .includes(resourceSkill.toLowerCase()),
-                    ),
-                  )
-                  .slice(0, 2)
-                  .map((resource) => resource.title);
-
-                const isHovered = hoveredSkill === skill.name;
-
-                return (
+              {skills.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No skills yet.</p>
+              ) : (
+                skills.map((name) => (
                   <div
-                    key={idx}
-                    className="relative rounded-lg px-3 py-2.5 cursor-default transition-all"
-                    style={{ backgroundColor: isHovered ? 'rgba(184,226,212,0.12)' : 'transparent', border: '1px solid', borderColor: isHovered ? 'rgba(2,116,111,0.2)' : 'transparent' }}
-                    onMouseEnter={() => setHoveredSkill(skill.name)}
-                    onMouseLeave={() => setHoveredSkill(null)}
+                    key={name}
+                    className="rounded-lg px-3 py-2.5"
+                    style={{ backgroundColor: 'rgba(184,226,212,0.12)', border: '1px solid rgba(2,116,111,0.15)' }}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium" style={{ color: '#15100c' }}>{skill.name}</span>
-                      <span
-                        className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                        style={{ color: level.color, backgroundColor: level.bg }}
-                      >
-                        {level.label}
-                      </span>
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: '#55371e', opacity: 0.7 }}>{skill.source}</div>
-
-                    {/* Hover detail card */}
-                    {isHovered && (
-                      <div
-                        className="absolute left-0 right-0 z-10 mt-1 p-3 rounded-lg shadow-lg"
-                        style={{ top: '100%', backgroundColor: '#fff', border: '1px solid rgba(2,116,111,0.2)' }}
-                      >
-                        {relatedCourses.length > 0 && (
-                          <div className="mb-2">
-                            <div className="text-xs font-semibold mb-1" style={{ color: '#02746f' }}>Related Courses</div>
-                            {relatedCourses.map((c, i) => (
-                              <div key={i} className="text-xs flex items-center gap-1" style={{ color: '#55371e' }}>
-                                <BookOpen className="w-3 h-3 flex-shrink-0" style={{ color: '#02746f' }} />
-                                {c}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-xs font-semibold mb-1" style={{ color: '#02746f' }}>Experience</div>
-                          <div className="text-xs flex items-center gap-1" style={{ color: '#55371e' }}>
-                            <Briefcase className="w-3 h-3 flex-shrink-0" style={{ color: '#02746f' }} />
-                            {skill.source}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    <span className="text-sm font-medium" style={{ color: '#15100c' }}>{name}</span>
                   </div>
-                );
-              })}
+                ))
+              )}
             </div>
           )}
 
@@ -1095,39 +1355,21 @@ export function GrindPage({ profileId, targetRole, resources, isLoadingResources
 
           {/* Experience Tab */}
           {profileSection === 'experience' && (
-            <div className="space-y-3">
-              {userProfile.resume.experience.map((exp, idx) => {
-                const key = `exp-${idx}`;
-                const isOpen = expandedItem === key;
-                return (
+            <div className="space-y-2">
+              {experience.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No experience highlights yet.</p>
+              ) : (
+                experience.map((highlight, idx) => (
                   <div
                     key={idx}
-                    className="p-4 rounded-lg transition-all cursor-pointer"
-                    style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
-                    onClick={() => setExpandedItem(isOpen ? null : key)}
+                    className="p-3 rounded-lg flex gap-2"
+                    style={{ backgroundColor: 'rgba(184,226,212,0.08)' }}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium" style={{ color: '#15100c' }}>{exp.role}</div>
-                        <div className="text-sm" style={{ color: '#55371e' }}>{exp.company} · {exp.duration}</div>
-                      </div>
-                      {exp.highlights.length > 0 && (
-                        <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                      )}
-                    </div>
-                    {isOpen && exp.highlights.length > 0 && (
-                      <ul className="mt-3 space-y-1 border-t pt-3" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
-                        {exp.highlights.map((h, hidx) => (
-                          <li key={hidx} className="flex gap-2 text-sm" style={{ color: '#55371e' }}>
-                            <span style={{ color: '#02746f' }}>•</span>
-                            <span>{h}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <span style={{ color: '#02746f' }}>•</span>
+                    <span className="text-sm" style={{ color: '#15100c' }}>{highlight}</span>
                   </div>
-                );
-              })}
+                ))
+              )}
             </div>
           )}
 

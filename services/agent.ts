@@ -28,6 +28,8 @@ export interface AgentProfileContext {
   targetRole: string | null;
   matchScore: number | null;
   availableRoles: AgentAvailableRole[];
+  coursesInProgress: string[];
+  coursesCompleted: string[];
 }
 
 function buildSystemPrompt(context: AgentProfileContext): string {
@@ -51,9 +53,16 @@ function buildSystemPrompt(context: AgentProfileContext): string {
           context.matchScore != null ? ` (current match score: ${context.matchScore}%)` : ''
         }.`
       : "They haven't picked a target role yet.",
+    context.coursesInProgress.length
+      ? `Courses currently in progress: ${context.coursesInProgress.join(', ')}.`
+      : null,
+    context.coursesCompleted.length
+      ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
+      : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation.",
-    "Use get_skill_gaps, find_resources_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_resources_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "Use get_skill_gaps, find_mcit_courses_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
+    "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
     context.availableRoles.length
@@ -70,7 +79,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
   return {
     set_target_role: tool({
       description:
-        "Set the user's target/dream career role. Only call this when the user explicitly asks to set or change their target role to a specific role from the available list.",
+        "Set the user's target/dream career role. Only call this when the user explicitly asks to set or change their target role to a specific role from the available list. Do not call this when the user asks an informational question about a role, like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" — that's a request for advice, not a request to change their goal.",
       inputSchema: z.object({
         roleId: z
           .number()
@@ -137,46 +146,48 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
           .describe('Skill names to remove, e.g. ["Java", "Perl"].'),
       }),
       execute: async ({ skillNames }) => {
-        const resolved = await Promise.all(
-          skillNames.map(async (name) => ({ name, match: await skills.getSkillByName(name) })),
-        );
+        // Removability is based on the profile's `skills` display string —
+        // that's what the user actually sees (e.g. on Landscape) — not on
+        // whether the skill happens to be linked in Profile_Skills, since
+        // that table isn't guaranteed to mirror every name in the string
+        // (e.g. resume-parsed skills that were never linked to the catalog).
+        const profile = await profiles.getProfileById(profileId);
+        const currentNames = profile?.skills
+          ? profile.skills.split(',').map((name) => name.trim()).filter(Boolean)
+          : [];
+        const currentNamesLower = new Set(currentNames.map((name) => name.toLowerCase()));
 
-        const found = resolved.filter(
+        const onProfile = skillNames.filter((name) => currentNamesLower.has(name.toLowerCase()));
+        const notOnProfile = skillNames.filter((name) => !currentNamesLower.has(name.toLowerCase()));
+
+        if (onProfile.length === 0) {
+          return { success: false, removed: [], notOnProfile };
+        }
+
+        await profiles.removeSkillsFromField(profileId, onProfile);
+
+        // Best-effort: also unlink relationally wherever a catalog match and
+        // an existing Profile_Skills link happen to exist.
+        const resolved = await Promise.all(
+          onProfile.map(async (name) => ({ name, match: await skills.getSkillByName(name) })),
+        );
+        const catalogMatches = resolved.filter(
           (entry): entry is { name: string; match: { skillId: number } } => entry.match !== null,
         );
-        const notInCatalog = resolved.filter((entry) => entry.match === null).map((entry) => entry.name);
 
-        if (found.length === 0) {
-          return { success: false, removed: [], notInCatalog, notOnProfile: [] };
+        if (catalogMatches.length > 0) {
+          const currentLinks = await profiles.getSkillsByProfile(profileId);
+          const linkedSkillIds = new Set(currentLinks.map((row) => row.skillId));
+          const linkedIdsToRemove = catalogMatches
+            .filter((entry) => linkedSkillIds.has(entry.match.skillId))
+            .map((entry) => entry.match.skillId);
+
+          if (linkedIdsToRemove.length > 0) {
+            await profiles.removeSkillsFromProfile(profileId, linkedIdsToRemove);
+          }
         }
 
-        const currentLinks = await profiles.getSkillsByProfile(profileId);
-        const linkedSkillIds = new Set(currentLinks.map((row) => row.skillId));
-
-        const linked = found.filter((entry) => linkedSkillIds.has(entry.match.skillId));
-        const notOnProfile = found
-          .filter((entry) => !linkedSkillIds.has(entry.match.skillId))
-          .map((entry) => entry.name);
-
-        if (linked.length === 0) {
-          return { success: false, removed: [], notInCatalog, notOnProfile };
-        }
-
-        await profiles.removeSkillsFromProfile(
-          profileId,
-          linked.map((entry) => entry.match.skillId),
-        );
-        await profiles.removeSkillsFromField(
-          profileId,
-          linked.map((entry) => entry.name),
-        );
-
-        return {
-          success: true,
-          removed: linked.map((entry) => entry.name),
-          notInCatalog,
-          notOnProfile,
-        };
+        return { success: true, removed: onProfile, notOnProfile };
       },
     }),
     set_location: tool({
@@ -276,11 +287,11 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         };
       },
     }),
-    find_resources_for_skill: tool({
+    find_mcit_courses_for_skill: tool({
       description:
-        "Find real learning resources (courses, tutorials, etc.) that teach a specific skill. Use this when recommending how the user can learn or improve a skill, instead of suggesting generic resources from general knowledge.",
+        "Find real MCIT courses that teach a specific skill. Use this when recommending how the user can learn or improve a skill, instead of suggesting generic resources from general knowledge.",
       inputSchema: z.object({
-        skillName: z.string().describe('The skill to find learning resources for, e.g. "Kubernetes".'),
+        skillName: z.string().describe('The skill to find MCIT courses for, e.g. "Kubernetes".'),
       }),
       execute: async ({ skillName }) => {
         const match = await skills.getSkillByName(skillName);
