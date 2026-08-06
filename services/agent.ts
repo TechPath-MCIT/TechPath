@@ -1,5 +1,5 @@
 // services/agent.ts
-import { generateText, stepCountIs, tool } from 'ai';
+import { streamText, stepCountIs, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
 import type { ChatMessage } from '@/services/conversations';
@@ -7,6 +7,7 @@ import * as profiles from '@/services/profiles';
 import * as skills from '@/services/skills';
 import * as roles from '@/services/roles';
 import * as resourcesSvc from '@/services/resources';
+import * as match from '@/services/match';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -61,7 +62,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
     "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
-    "Use get_skill_gaps, find_mcit_courses_for_skill, and get_role_details freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn something, get_role_details whenever salary, compensation, responsibilities, or job titles come up.",
+    "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
@@ -339,6 +340,80 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         return { success: true, ...details };
       },
     }),
+    recommend_roles_for_skills: tool({
+      description:
+        "Recommend the roles that best fit the user's current skills, ranked by match score. Use this when the user asks what role suits their skills, or wants suggestions and hasn't picked a target role.",
+      inputSchema: z.object({
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('How many top roles to return. Defaults to 5.'),
+      }),
+      execute: async ({ limit }) => {
+        const scores = await match.getRoleMatchScores(profileId);
+        const top = scores.slice(0, limit ?? 5);
+
+        return {
+          success: true,
+          roles: top.map((entry) => ({
+            roleId: entry.roleId,
+            roleName: entry.role,
+            matchScore: entry.score,
+          })),
+        };
+      },
+    }),
+    recommend_courses_for_role: tool({
+      description:
+        "Recommend real MCIT courses covering a role's missing skills, combining skill-gap analysis and course lookup in one call. Prefer this over calling get_skill_gaps and find_mcit_courses_for_skill separately when the user wants course recommendations for a whole role.",
+      inputSchema: z.object({
+        roleId: z
+          .number()
+          .int()
+          .describe(
+            'The numeric id of the role to recommend courses for, from the available roles list. Use the target role id if the user does not specify a role.',
+          ),
+      }),
+      execute: async ({ roleId }) => {
+        const role = availableRoles.find((candidate) => candidate.roleId === roleId);
+        if (!role) {
+          return { success: false, error: `${roleId} is not a valid role id.` };
+        }
+
+        const [roleSkills, profileLinks, allResources] = await Promise.all([
+          roles.getRoleSkills(roleId),
+          profiles.getSkillsByProfile(profileId),
+          resourcesSvc.getResources({ limit: 200 }),
+        ]);
+
+        const linkedSkillIds = new Set(profileLinks.map((link) => link.skillId));
+        const missingSkills = roleSkills.slice(0, 10).filter((skill) => !linkedSkillIds.has(skill.skillId));
+
+        const recommendations = missingSkills.map((skill) => {
+          const matchingCourses = allResources
+            .filter((resource) => resource.skills.some((entry) => entry.skillId === skill.skillId))
+            .sort((a, b) => {
+              const weightA = a.skills.find((entry) => entry.skillId === skill.skillId)?.coverageWeight ?? 0;
+              const weightB = b.skills.find((entry) => entry.skillId === skill.skillId)?.coverageWeight ?? 0;
+              return weightB - weightA;
+            })
+            .slice(0, 3)
+            .map((resource) => ({ name: resource.name, url: resource.url, pricing: resource.pricing.type }));
+
+          return { skillName: skill.name, courses: matchingCourses };
+        });
+
+        return {
+          success: true,
+          roleName: role.name,
+          missingSkillCount: missingSkills.length,
+          recommendations,
+        };
+      },
+    }),
   };
 }
 
@@ -347,19 +422,46 @@ export interface AgentReplyResult {
   profileUpdated: boolean;
 }
 
+const MUTATION_TOOL_NAMES = new Set([
+  'set_target_role',
+  'add_skills',
+  'remove_skills',
+  'set_location',
+  'set_years_of_experience',
+  'update_education',
+  'add_work_experience',
+]);
+
 /**
- * Generates the agent's reply for one turn of a conversation, given the
- * profile's context and the prior message history. The agent can call tools
- * to actually update the profile (target role, skills, location) when the
- * user explicitly asks for a change.
+ * Given the resolved toolResults from a generateText/streamText call, reports
+ * whether any mutation tool actually succeeded — used to decide whether the
+ * frontend needs to refresh the profile after this turn.
  */
-export async function generateAgentReply(
+export function didUpdateProfile(toolResults: readonly { toolName: string; output: unknown }[]): boolean {
+  return toolResults.some(
+    (toolResult) =>
+      MUTATION_TOOL_NAMES.has(toolResult.toolName) &&
+      typeof toolResult.output === 'object' &&
+      toolResult.output !== null &&
+      (toolResult.output as { success?: boolean }).success === true,
+  );
+}
+
+/**
+ * Starts streaming the agent's reply for one turn of a conversation, given
+ * the profile's context and the prior message history. The agent can call
+ * tools to actually update the profile (target role, skills, location) when
+ * the user explicitly asks for a change. Callers consume `.textStream` for
+ * incremental text, and await `.text` / `.toolResults` once it's drained for
+ * the final full reply and whether the profile was updated.
+ */
+export function streamAgentReply(
   context: AgentProfileContext,
   history: ChatMessage[],
   message: string,
   profileId: number,
-): Promise<AgentReplyResult> {
-  const result = await generateText({
+) {
+  return streamText({
     model: google('gemini-2.5-flash'),
     system: buildSystemPrompt(context),
     messages: [
@@ -369,24 +471,4 @@ export async function generateAgentReply(
     tools: buildAgentTools(profileId, context.availableRoles),
     stopWhen: stepCountIs(6),
   });
-
-  const MUTATION_TOOL_NAMES = new Set([
-    'set_target_role',
-    'add_skills',
-    'remove_skills',
-    'set_location',
-    'set_years_of_experience',
-    'update_education',
-    'add_work_experience',
-  ]);
-
-  const profileUpdated = result.toolResults.some(
-    (toolResult) =>
-      MUTATION_TOOL_NAMES.has(toolResult.toolName) &&
-      typeof toolResult.output === 'object' &&
-      toolResult.output !== null &&
-      (toolResult.output as { success?: boolean }).success === true,
-  );
-
-  return { reply: result.text, profileUpdated };
 }
