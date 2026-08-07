@@ -4,7 +4,7 @@ import * as profiles from '@/services/profiles';
 import * as roles from '@/services/roles';
 import * as match from '@/services/match';
 import * as conversations from '@/services/conversations';
-import { generateAgentReply, type AgentAvailableRole, type AgentProfileContext } from '@/services/agent';
+import { didUpdateProfile, streamAgentReply, type AgentAvailableRole, type AgentProfileContext } from '@/services/agent';
 import type { ChatMessage } from '@/services/conversations';
 
 interface RouteContext {
@@ -26,10 +26,13 @@ function isChatMessage(entry: unknown): entry is ChatMessage {
  *       - AI Agent
  *     summary: Send a message to the AI career agent
  *     description:
- *       Generates a reply from the AI career agent using the profile's skills,
+ *       Streams a reply from the AI career agent using the profile's skills,
  *       target role, and match score as context, then persists the exchange
  *       to the profile's conversation history (creating a new conversation if
- *       no conversationId is given).
+ *       no conversationId is given). Response body is newline-delimited JSON,
+ *       one {"type":"delta","text":"..."} line per text chunk, followed by a
+ *       final {"type":"done","conversationId":N,"profileUpdated":bool} line
+ *       (or {"type":"error","error":"..."} if generation fails mid-stream).
  *     parameters:
  *        - name: id
  *          in: path
@@ -141,23 +144,52 @@ export async function POST(request: NextRequest, context: RouteContext) {
             coursesCompleted,
         };
 
-        const { reply, profileUpdated } = await generateAgentReply(agentContext, history, message, profile_id);
+        const result = streamAgentReply(agentContext, history, message, profile_id);
 
-        const now = new Date().toISOString();
-        const updatedHistory: ChatMessage[] = [
-            ...history,
-            { role: 'user', content: message, timestamp: now },
-            { role: 'assistant', content: reply, timestamp: now },
-        ];
+        // Streams the reply as newline-delimited JSON: one {"type":"delta",...}
+        // line per text chunk, then a final {"type":"done",...} line once the
+        // full reply is generated and persisted (or {"type":"error",...} if
+        // something fails after streaming has already started, since the
+        // response status is already committed by then).
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+                try {
+                    for await (const chunk of result.textStream) {
+                        controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', text: chunk }) + '\n'));
+                    }
 
-        const conversation = conversationId
-            ? await conversations.updateConversationContext(conversationId, updatedHistory)
-            : await conversations.createConversation(profile_id, message.slice(0, 60), updatedHistory);
+                    const [reply, toolResults] = await Promise.all([result.text, result.toolResults]);
+                    const profileUpdated = didUpdateProfile(toolResults);
 
-        return NextResponse.json(
-            { success: true, reply, conversationId: conversation.conversationId, profileUpdated },
-            { status: 200 },
-        );
+                    const now = new Date().toISOString();
+                    const updatedHistory: ChatMessage[] = [
+                        ...history,
+                        { role: 'user', content: message, timestamp: now },
+                        { role: 'assistant', content: reply, timestamp: now },
+                    ];
+
+                    const conversation = conversationId
+                        ? await conversations.updateConversationContext(conversationId, updatedHistory)
+                        : await conversations.createConversation(profile_id, message.slice(0, 60), updatedHistory);
+
+                    controller.enqueue(encoder.encode(JSON.stringify({
+                        type: 'done',
+                        conversationId: conversation.conversationId,
+                        profileUpdated,
+                    }) + '\n'));
+                } catch (error: any) {
+                    controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', error: error.message }) + '\n'));
+                } finally {
+                    controller.close();
+                }
+            },
+        });
+
+        return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8' },
+        });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

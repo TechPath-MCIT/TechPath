@@ -159,6 +159,42 @@ export default function AgentContainer() {
       SEND_TIMEOUT_MS,
     );
 
+    const agentMessageId = (Date.now() + 1).toString();
+    let agentMessageStarted = false;
+    let fullReply = "";
+    let resolvedConversationId: number | null = null;
+    let profileUpdated = false;
+
+    // Reveals fullReply at a steady pace (independent of how bursty the
+    // network chunks are), so the text always types out at the same speed.
+    const REVEAL_CHARS_PER_TICK = 3;
+    const REVEAL_INTERVAL_MS = 20;
+    let revealedLength = 0;
+    let revealTimer: ReturnType<typeof setInterval> | null = null;
+    let networkDone = false;
+    let onRevealDone: (() => void) | null = null;
+
+    function maybeFinishReveal() {
+      if (networkDone && revealedLength >= fullReply.length) {
+        if (revealTimer) {
+          clearInterval(revealTimer);
+          revealTimer = null;
+        }
+        onRevealDone?.();
+      }
+    }
+
+    function tickReveal() {
+      if (revealedLength < fullReply.length) {
+        revealedLength = Math.min(revealedLength + REVEAL_CHARS_PER_TICK, fullReply.length);
+        const shown = fullReply.slice(0, revealedLength);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === agentMessageId ? { ...m, content: shown } : m)),
+        );
+      }
+      maybeFinishReveal();
+    }
+
     try {
       const response = await fetch(`/api/profiles/${profile.profileId}/agent`, {
         method: "POST",
@@ -171,34 +207,93 @@ export default function AgentContainer() {
         signal: controller.signal,
       });
 
-      const body = (await response.json()) as AgentApiResponse;
-
-      if (!response.ok || !body.success || !body.reply) {
-        throw new Error(body.error ?? "The agent couldn't respond.");
+      if (!response.ok || !response.body) {
+        const body = (await response.json().catch(() => null)) as AgentApiResponse | null;
+        throw new Error(body?.error ?? "The agent couldn't respond.");
       }
 
-      const resolvedConversationId = body.conversationId ?? conversationIdRef.current;
-      conversationIdRef.current = resolvedConversationId;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as
+            | { type: "delta"; text: string }
+            | { type: "done"; conversationId: number; profileUpdated: boolean }
+            | { type: "error"; error: string };
+
+          if (event.type === "delta") {
+            fullReply += event.text;
+
+            if (!agentMessageStarted) {
+              agentMessageStarted = true;
+              setMessages((prev) => [
+                ...prev,
+                { id: agentMessageId, role: "agent", content: "", timestamp: new Date() },
+              ]);
+              revealTimer = setInterval(tickReveal, REVEAL_INTERVAL_MS);
+            }
+          } else if (event.type === "done") {
+            resolvedConversationId = event.conversationId;
+            profileUpdated = event.profileUpdated;
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        }
+      }
+
+      networkDone = true;
+
+      // Let the reveal animation finish catching up to the full text before
+      // moving on — still cancellable via the same AbortController.
+      await new Promise<void>((resolve, reject) => {
+        function onAbort() {
+          if (revealTimer) clearInterval(revealTimer);
+          controller.signal.removeEventListener("abort", onAbort);
+          reject(new DOMException("Aborted", "AbortError"));
+        }
+
+        if (controller.signal.aborted) {
+          onAbort();
+          return;
+        }
+
+        controller.signal.addEventListener("abort", onAbort);
+        onRevealDone = () => {
+          controller.signal.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        maybeFinishReveal();
+      });
+
+      conversationIdRef.current = resolvedConversationId ?? conversationIdRef.current;
       if (resolvedConversationId) {
         setCurrentConversationId(String(resolvedConversationId));
       }
 
-      if (body.profileUpdated) {
+      if (profileUpdated) {
         // The agent changed the profile via a tool call (target role, skills,
         // or location) — refresh server data so the sidebar/Landscape reflect it.
         router.refresh();
       }
 
-      const agentMessage: AgentMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "agent",
-        content: body.reply,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, agentMessage]);
-
       if (resolvedConversationId) {
+        const agentMessage: AgentMessage = {
+          id: agentMessageId,
+          role: "agent",
+          content: fullReply,
+          timestamp: new Date(),
+        };
+
         const existingTitle = conversations.find(
           (c) => c.id === String(resolvedConversationId),
         )?.title;
@@ -217,6 +312,15 @@ export default function AgentContainer() {
         ]);
       }
     } catch (err) {
+      if (revealTimer) {
+        clearInterval(revealTimer);
+        revealTimer = null;
+      }
+      if (agentMessageStarted) {
+        // Partial text already streamed in — drop the incomplete bubble
+        // rather than leaving a cut-off reply with no error context.
+        setMessages((prev) => prev.filter((m) => m.id !== agentMessageId));
+      }
       if (err instanceof DOMException && err.name === "AbortError") {
         setError(
           controller.signal.reason === "timeout"
@@ -237,6 +341,27 @@ export default function AgentContainer() {
     abortControllerRef.current?.abort("cancelled");
   }, []);
 
+  const handleDeleteConversation = useCallback(
+    async (id: string) => {
+      const response = await fetch(
+        `/api/profiles/${profile.profileId}/conversations?conversationId=${id}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) return;
+
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+
+      if (currentConversationId === id) {
+        conversationIdRef.current = null;
+        setCurrentConversationId("new");
+        setMessages([GREETING]);
+        setError(null);
+      }
+    },
+    [currentConversationId, profile.profileId],
+  );
+
   return (
     <div className="p-6" style={{ height: "calc(100vh - 72px)" }}>
       <AgentChat
@@ -249,6 +374,7 @@ export default function AgentContainer() {
         onCancelSend={handleCancelSend}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
         isSending={isSending}
         errorMessage={error}
       />

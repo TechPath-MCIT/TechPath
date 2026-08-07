@@ -110,6 +110,64 @@ export async function GET(request: NextRequest, context: RouteContext) {
  *       500:
  *         description: Core internal server network execution block.
  */
+/**
+ * @swagger
+ * /api/profiles/{id}/conversations:
+ *   delete:
+ *     tags:
+ *       - Conversations of Profiles
+ *     summary: Delete a conversation thread
+ *     description:
+ *       Deletes a single conversation thread, after verifying it belongs to
+ *       the given profile.
+ *     parameters:
+ *        - name: id
+ *          in: path
+ *          required: true
+ *          description: id of the profile that owns the conversation
+ *          schema:
+ *              type: string
+ *        - name: conversationId
+ *          in: query
+ *          required: true
+ *          description: id of the conversation to delete
+ *          schema:
+ *              type: integer
+ *     responses:
+ *       200:
+ *         description: Successfully deleted the conversation.
+ *       400:
+ *         description: Missing or invalid profile id / conversationId.
+ *       404:
+ *         description: No profile or conversation found for the given ids.
+ *       500:
+ *         description: Core internal server network execution block.
+ */
+export async function DELETE(request: NextRequest, context: RouteContext) {
+    try {
+        const resolved_params = await context.params;
+        const profile_id = Number(resolved_params.id);
+        if (!Number.isInteger(profile_id)) {
+            return NextResponse.json({ success: false, error: "A valid profile id is required." }, { status: 400 });
+        }
+
+        const conversationId = Number(request.nextUrl.searchParams.get("conversationId"));
+        if (!Number.isInteger(conversationId)) {
+            return NextResponse.json({ success: false, error: "A valid conversationId is required." }, { status: 400 });
+        }
+
+        const conversation = await conversations.getConversationById(conversationId);
+        if (!conversation || conversation.profileId !== profile_id) {
+            return NextResponse.json({ success: false, error: "No conversation found for the given ids." }, { status: 404 });
+        }
+
+        await conversations.deleteConversation(conversationId);
+        return NextResponse.json({ success: true }, { status: 200 });
+    } catch (error: any) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+}
+
 export async function PUT(request: NextRequest, context: RouteContext) {
     try {
         const resolved_params = await context.params;
