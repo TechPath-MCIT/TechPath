@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   UserProfile,
@@ -39,6 +40,7 @@ export default function LandscapeContainer({
   roles,
 }: LandscapeContainerProps) {
   const profile = useWorkspaceProfile();
+  const router = useRouter();
 
   const [matchScores, setMatchScores] = useState<
   Record<number, number>
@@ -222,6 +224,7 @@ export default function LandscapeContainer({
           onLoadRoles={loadRoles}
           onSetTargetRole={saveTargetRole}
           onSetLocation={saveLocation}
+          onEditProfile={() => router.push("/profile")}
         />
       </div>
 

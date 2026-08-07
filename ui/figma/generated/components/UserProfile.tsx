@@ -43,6 +43,7 @@ interface UserProfileProps {
   onLoadRoles?: () => Promise<RoleOption[]>;
   onSetTargetRole?: (target: RoleOption) => Promise<void>;
   onSetLocation?: (location: string) => Promise<void>;
+  onEditProfile?: () => void;
 }
 
 export type RoleOption = {
@@ -70,6 +71,7 @@ export function UserProfile({
   onLoadRoles = async () => figmaPreviewRoles,
   onSetTargetRole = async () => {},
   onSetLocation,
+  onEditProfile,
 }: UserProfileProps) {
   const [userLocation, setUserLocation] = useState(location);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -212,6 +214,16 @@ export function UserProfile({
           }
         </div>
         <h2 className="text-xl font-semibold" style={{ color: '#15100c' }}>{name}</h2>
+        {onEditProfile && (
+          <button
+            onClick={onEditProfile}
+            className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-80"
+            style={{ backgroundColor: 'rgba(2,116,111,0.08)', color: '#02746f' }}
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            Edit Profile
+          </button>
+        )}
       </div>
 
       {/* Info rows */}

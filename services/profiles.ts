@@ -133,22 +133,33 @@ export async function addEducationEntry(profile_ID: number, entry: EducationEntr
 
 
 /**
- * Maps parsed resume fields onto the Profile columns shared by create and update.
- * @param resumeId the Resume row (raw resume text) this profile data was parsed from
+ * Maps parsed resume fields onto the Profile columns shared by create, update,
+ * and in-place edits — everything except `resumeid`/`isTest`, which only make
+ * sense in the context of a fresh resume upload (see resumeToProfileData).
  */
-function resumeToProfileData(resume: parsed_resume, test: boolean, resumeId: number) {
+function resumeFieldsForUpdate(resume: parsed_resume) {
     const totalYears = resume.experiences?.reduce((sum, exp) => sum + (exp.years || 0), 0);
 
     return {
         fullname: resume.name || "N/A",
         highestDegree: resume.education || "N/A",
-        isTest: test,
         educationhistory: resume.educationHistory ?? Prisma.JsonNull,
         yearofexperience: totalYears ?? null,
         profexperience: resume.experiences ?? Prisma.JsonNull,
         skills: resume.skills?.length ? resume.skills.join(", ") : null,
-        resumeid: resumeId,
         location: resume.location || null,
+    };
+}
+
+/**
+ * Maps parsed resume fields onto the Profile columns shared by create and update.
+ * @param resumeId the Resume row (raw resume text) this profile data was parsed from
+ */
+function resumeToProfileData(resume: parsed_resume, test: boolean, resumeId: number) {
+    return {
+        ...resumeFieldsForUpdate(resume),
+        isTest: test,
+        resumeid: resumeId,
     };
 }
 
@@ -176,6 +187,20 @@ export async function updateProfileFromResume(profile_ID: number, resume: parsed
     return prisma.profile.update({
         where: { profile_ID },
         data: resumeToProfileData(resume, test, resumeId),
+    });
+}
+
+/**
+ * Updates an already-saved profile's fields in place from user edits (e.g. the
+ * profile-edit page), without touching its linked `resumeid`/`isTest` — unlike
+ * updateProfileFromResume, this isn't tied to a new resume upload.
+ * @param profile_ID the profile to update
+ * @param resume the edited field values
+ */
+export async function updateProfileFields(profile_ID: number, resume: parsed_resume) {
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: resumeFieldsForUpdate(resume),
     });
 }
 

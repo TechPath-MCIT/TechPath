@@ -3,6 +3,7 @@
 import { useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { ResumeUploadPage } from "@/ui/figma/generated/pages/ResumeUploadPage";
+import { PARSED_RESUME_STORAGE_KEY } from "@/app/resume-review/parsedResumeStorage";
 
 function getApiError(body: unknown): string {
   if (
@@ -25,17 +26,28 @@ export default function ResumeUploadContainer() {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch("/api/profiles", {
+    const response = await fetch("/api/resumes/parse", {
       method: "POST",
       body: formData,
     });
 
+    const body: unknown = await response.json().catch(() => null);
+
     if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
       throw new Error(getApiError(body));
     }
 
-    router.push("/landscape");
+    const parsed =
+      typeof body === "object" && body !== null && "data" in body
+        ? (body as { data: unknown }).data
+        : null;
+
+    if (!parsed) {
+      throw new Error("Failed to parse resume.");
+    }
+
+    sessionStorage.setItem(PARSED_RESUME_STORAGE_KEY, JSON.stringify(parsed));
+    router.push("/resume-review");
   }
 
   return (
