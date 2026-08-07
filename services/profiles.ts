@@ -299,7 +299,7 @@ export async function setResourceStatusForProfile(profile_ID: number, resource_i
 }
 
 /**
- * Marks a resource as complete for a profile and rolls the skills that the
+ * Markss a resource as complete for a profile and rolls the skills that the
  * resource teaches onto the profile. Sets the profile_resource status to the
  * given statusId (defaults to the "Complete" status), then links every skill
  * associated with the resource to the profile and appends their names to the
