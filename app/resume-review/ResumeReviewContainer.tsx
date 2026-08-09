@@ -6,9 +6,11 @@ import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { PARSED_RESUME_STORAGE_KEY } from "./parsedResumeStorage";
 import { EditableResumeForm } from "@/components/resume/EditableResumeForm";
 import {
+  mergeProjects,
   normalizeParsedResume,
   toResumePayload,
   type EditableResume,
+  type ProjectEntry,
 } from "@/components/resume/editableResume";
 
 function getApiError(body: unknown): string {
@@ -18,7 +20,11 @@ function getApiError(body: unknown): string {
   return "Failed to save profile.";
 }
 
-export default function ResumeReviewContainer() {
+export default function ResumeReviewContainer({
+  existingProjects,
+}: {
+  existingProjects: ProjectEntry[];
+}) {
   const router = useRouter();
   const [resume, setResume] = useState<EditableResume | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -34,10 +40,13 @@ export default function ResumeReviewContainer() {
     }
 
     try {
-      setResume(normalizeParsedResume(JSON.parse(raw)));
+      const parsed = normalizeParsedResume(JSON.parse(raw));
+      parsed.projects = mergeProjects(existingProjects, parsed.projects);
+      setResume(parsed);
     } catch {
       setNotFound(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleConfirm() {
@@ -61,6 +70,7 @@ export default function ResumeReviewContainer() {
 
       sessionStorage.removeItem(PARSED_RESUME_STORAGE_KEY);
       router.push("/landscape");
+      router.refresh();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to save profile.");
     } finally {

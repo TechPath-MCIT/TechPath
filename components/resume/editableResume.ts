@@ -31,6 +31,43 @@ export type EditableResume = {
 };
 
 /**
+ * Coerces an arbitrary value into a ProjectEntry[], defensively — used both
+ * by normalizeParsedResume and directly by callers that only have a
+ * Profile's raw `projects` JSON column to work with (e.g. the resume-review
+ * page, which needs a saved profile's existing projects ahead of parsing a
+ * newly uploaded resume).
+ */
+export function normalizeProjects(raw: unknown): ProjectEntry[] {
+  return Array.isArray(raw)
+    ? raw.map((entry) => {
+        const e = (entry ?? {}) as Record<string, unknown>;
+        return {
+          name: typeof e.name === "string" ? e.name : "",
+          dateRange: typeof e.dateRange === "string" ? e.dateRange : "",
+          bullets: Array.isArray(e.bullets)
+            ? e.bullets.filter((b): b is string => typeof b === "string")
+            : [],
+        };
+      })
+    : [];
+}
+
+/**
+ * Merges an existing profile's projects with the projects freshly parsed
+ * from a newly uploaded resume, so re-uploading doesn't silently drop
+ * hand-added projects that live nowhere in a resume file. Dedup is by
+ * project name (case-insensitive, trimmed): `incoming` wins on a name
+ * collision (picks up updated bullets/dates), and anything only present in
+ * `existing` is preserved by appending it after `incoming`'s entries.
+ */
+export function mergeProjects(existing: ProjectEntry[], incoming: ProjectEntry[]): ProjectEntry[] {
+  const incomingNames = new Set(incoming.map((p) => p.name.trim().toLowerCase()));
+  const preserved = existing.filter((p) => !incomingNames.has(p.name.trim().toLowerCase()));
+
+  return [...incoming, ...preserved];
+}
+
+/**
  * Defensively coerces an arbitrary parsed-resume-shaped object (e.g. the
  * response from POST /api/resumes/parse, or a Profile row adapted by a
  * caller) into the shape this form expects.
@@ -64,19 +101,6 @@ export function normalizeParsedResume(raw: unknown): EditableResume {
       })
     : [];
 
-  const projects = Array.isArray(r.projects)
-    ? r.projects.map((entry) => {
-        const e = (entry ?? {}) as Record<string, unknown>;
-        return {
-          name: typeof e.name === "string" ? e.name : "",
-          dateRange: typeof e.dateRange === "string" ? e.dateRange : "",
-          bullets: Array.isArray(e.bullets)
-            ? e.bullets.filter((b): b is string => typeof b === "string")
-            : [],
-        };
-      })
-    : [];
-
   return {
     name: typeof r.name === "string" ? r.name : "",
     email: typeof r.email === "string" ? r.email : "",
@@ -87,7 +111,7 @@ export function normalizeParsedResume(raw: unknown): EditableResume {
       : [],
     educationHistory,
     experiences,
-    projects,
+    projects: normalizeProjects(r.projects),
     rawText: typeof r.rawText === "string" ? r.rawText : "",
   };
 }
