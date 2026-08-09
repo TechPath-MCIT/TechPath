@@ -24,6 +24,11 @@ type EducationEntry = {
   dateRange: string,
   gpa?: string,
 }
+type Project = {
+  name: string,
+  dateRange?: string,
+  bullets: Array<string>,
+}
 export interface parsed_resume{
   name?: string;
   email?: string;
@@ -32,6 +37,7 @@ export interface parsed_resume{
   education?: string;
   educationHistory?: Array<EducationEntry>;
   experiences?: Array<Experience> ;
+  projects?: Array<Project>;
   rawText?: string;
   success:boolean;
   error_msg?:string;
@@ -118,6 +124,18 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
               years: z.number().describe("Yearas employed in this specific role"),
               bullets: z.array(z.string()).describe("Array of accomplishments and responsibilities")
             })
+        ),
+
+        projects: z.array(
+            z.object({
+              name: z.string().describe("The project's name or title"),
+              dateRange: z.string().optional().describe("When the project was worked on, e.g. 'Fall 2024' or '2023 - 2024', if listed"),
+              bullets: z.array(z.string()).describe("Accomplishments, tools, and technologies used in this project")
+            })
+        ).describe(
+          "Academic, personal, and class projects listed on the resume — keep these separate from " +
+          "the 'experience' array even if they appear under a heading like 'Projects' or 'Academic Projects' " +
+          "rather than 'Experience'; do not merge a project into experience just because it resembles a job."
         )
 
       }),
@@ -144,6 +162,7 @@ export async function resumeParser(resume_path : string) : Promise<parsed_resume
       education: object.education,
       educationHistory: object.educationHistory,
       experiences: experiences,
+      projects: object.projects,
       rawText: unifiedText,
       success: true,
     }

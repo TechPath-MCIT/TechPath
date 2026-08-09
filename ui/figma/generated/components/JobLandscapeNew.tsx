@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Briefcase,
   DollarSign,
@@ -29,6 +29,7 @@ export type LandscapeRole = {
 
 type JobLandscapeNewProps = {
   roles: LandscapeRole[];
+  profileId: number;
   targetRoleId: number | null;
   matchScores: Record<number, number>;
   matchesLoading: boolean;
@@ -74,6 +75,7 @@ function formatMetric(value: number | null) {
 
 export function JobLandscapeNew({
   roles,
+  profileId,
   targetRoleId,
   matchScores,
   matchesLoading,
@@ -81,6 +83,37 @@ export function JobLandscapeNew({
 }: JobLandscapeNewProps) {
   const [selectedRole, setSelectedRole] =
     useState<LandscapeRole | null>(null);
+  const [ratedSkills, setRatedSkills] =
+    useState<LandscapeRole["topSkills"] | null>(null);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedRole) {
+      setRatedSkills(null);
+      return;
+    }
+
+    let cancelled = false;
+    setRatedSkills(null);
+    setRatingsLoading(true);
+
+    fetch(`/api/profiles/${profileId}/role/${selectedRole.roleId}/skill-ratings`)
+      .then((res) => res.json())
+      .then((body) => {
+        if (cancelled) return;
+        if (body?.success) setRatedSkills(body.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRatingsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRole, profileId]);
+
+  const displayedSkills = ratedSkills ?? selectedRole?.topSkills ?? [];
 
   const selectedRoleScore = selectedRole
   ? matchScores[selectedRole.roleId]
@@ -307,10 +340,14 @@ export function JobLandscapeNew({
                 </h3>
 
                 <div className="space-y-3">
-                  {selectedRole.topSkills.map((skill) => {
+                  {displayedSkills.map((skill) => {
                     const importance = Math.round(
                       (skill.weight ?? 0) * 100,
                     );
+                    const scorePercent =
+                      !ratingsLoading && skill.score !== null
+                        ? skill.score * 10
+                        : 0;
 
                     return (
                       <div key={skill.skillId}>
@@ -323,12 +360,37 @@ export function JobLandscapeNew({
                           </span>
 
                           <span
-                            className="text-xs font-semibold"
+                            className="flex items-center gap-1 text-xs font-semibold"
                             style={{ color: "#55371e" }}
                           >
-                            {skill.score === null
-                              ? "—"
-                              : `${skill.score}%`}
+                            {ratingsLoading ? (
+                              <>
+                                <svg
+                                  className="h-3 w-3 animate-spin"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8v8H4z"
+                                  />
+                                </svg>
+                                Loading
+                              </>
+                            ) : skill.score === null ? (
+                              "—"
+                            ) : (
+                              `${skill.score}/10`
+                            )}
                           </span>
                         </div>
 
@@ -339,9 +401,9 @@ export function JobLandscapeNew({
                           }}
                         >
                           <div
-                            className="h-full rounded-full"
+                            className="h-full rounded-full transition-all duration-500"
                             style={{
-                              width: `${importance}%`,
+                              width: `${scorePercent}%`,
                               background:
                                 "linear-gradient(90deg, rgba(2,116,111,0.45), rgba(184,226,212,0.7))",
                             }}

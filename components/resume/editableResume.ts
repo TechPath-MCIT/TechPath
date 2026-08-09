@@ -12,6 +12,12 @@ export type ExperienceEntry = {
   bullets: string[];
 };
 
+export type ProjectEntry = {
+  name: string;
+  dateRange: string;
+  bullets: string[];
+};
+
 export type EditableResume = {
   name: string;
   email: string;
@@ -20,6 +26,7 @@ export type EditableResume = {
   skills: string[];
   educationHistory: EducationEntry[];
   experiences: ExperienceEntry[];
+  projects: ProjectEntry[];
   rawText: string;
 };
 
@@ -57,6 +64,19 @@ export function normalizeParsedResume(raw: unknown): EditableResume {
       })
     : [];
 
+  const projects = Array.isArray(r.projects)
+    ? r.projects.map((entry) => {
+        const e = (entry ?? {}) as Record<string, unknown>;
+        return {
+          name: typeof e.name === "string" ? e.name : "",
+          dateRange: typeof e.dateRange === "string" ? e.dateRange : "",
+          bullets: Array.isArray(e.bullets)
+            ? e.bullets.filter((b): b is string => typeof b === "string")
+            : [],
+        };
+      })
+    : [];
+
   return {
     name: typeof r.name === "string" ? r.name : "",
     email: typeof r.email === "string" ? r.email : "",
@@ -67,6 +87,7 @@ export function normalizeParsedResume(raw: unknown): EditableResume {
       : [],
     educationHistory,
     experiences,
+    projects,
     rawText: typeof r.rawText === "string" ? r.rawText : "",
   };
 }
@@ -85,6 +106,7 @@ export function profileToEditableResume(
     skills: string | null;
     educationhistory: unknown;
     profexperience: unknown;
+    projects: unknown;
   },
   email: string,
 ): EditableResume {
@@ -98,6 +120,7 @@ export function profileToEditableResume(
       : [],
     educationHistory: profile.educationhistory,
     experiences: profile.profexperience,
+    projects: profile.projects,
   });
 }
 
@@ -122,6 +145,11 @@ export function toResumePayload(resume: EditableResume) {
       company: entry.company,
       title: entry.title,
       years: Number(entry.years) || 0,
+      bullets: entry.bullets.filter((b) => b.trim().length > 0),
+    })),
+    projects: resume.projects.map((entry) => ({
+      name: entry.name,
+      ...(entry.dateRange.trim() ? { dateRange: entry.dateRange } : {}),
       bullets: entry.bullets.filter((b) => b.trim().length > 0),
     })),
     rawText: resume.rawText,

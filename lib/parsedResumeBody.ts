@@ -25,6 +25,7 @@ export function toParsedResume(body: any): parsed_resume {
         education: toStringOrUndefined(body?.education),
         educationHistory: Array.isArray(body?.educationHistory) ? body.educationHistory : undefined,
         experiences: Array.isArray(body?.experiences) ? body.experiences : undefined,
+        projects: Array.isArray(body?.projects) ? body.projects : undefined,
         rawText: toStringOrUndefined(body?.rawText),
         success: true,
     };

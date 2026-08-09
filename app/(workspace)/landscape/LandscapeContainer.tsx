@@ -231,6 +231,7 @@ export default function LandscapeContainer({
       <div className="col-span-9 min-h-0">
         <JobLandscapeNew
           roles={roles}
+          profileId={profile.profileId}
           targetRoleId={profile.targetRole?.roleId ?? null}
           matchScores={matchScores}
           matchesLoading={matchesLoading}

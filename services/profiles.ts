@@ -146,6 +146,7 @@ function resumeFieldsForUpdate(resume: parsed_resume) {
         educationhistory: resume.educationHistory ?? Prisma.JsonNull,
         yearofexperience: totalYears ?? null,
         profexperience: resume.experiences ?? Prisma.JsonNull,
+        projects: resume.projects ?? Prisma.JsonNull,
         skills: resume.skills?.length ? resume.skills.join(", ") : null,
         location: resume.location || null,
     };
@@ -473,12 +474,15 @@ export async function addSkillsToProfile(profile_ID: number, skills_ids: number[
 /**
  * Replace all skills linked to a profile with a fresh set parsed from a resume.
  * Clears existing links first so re-uploads don't hit unique-constraint errors
- * on skills that were already linked.
+ * on skills that were already linked. Also invalidates any cached AI skill
+ * proficiency ratings for this profile, since they were computed against the
+ * skill set/experience this call is about to change.
  * @param profile_ID to replace skills for
  * @param skills_name array of skills to link
  */
 export async function replaceProfileSkills(profile_ID: number, skills_name: string[]) {
     await prisma.profile_Skills.deleteMany({ where: { profileId: profile_ID } });
+    await prisma.profileSkillRating.deleteMany({ where: { profileId: profile_ID } });
     return addSkillstoProfileByName(profile_ID, skills_name);
 }
 
