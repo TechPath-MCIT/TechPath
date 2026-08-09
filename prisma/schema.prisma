@@ -26,17 +26,19 @@ model Role {
   profiles                 Profile[]
   role_industry            role_industry[]
   role_skills              role_skills[]
+  profileSkillRatings      ProfileSkillRating[]
 
   @@map("roles")
 }
 
 model Skill {
-  skillId         Int               @id @map("id")
-  name            String?           @map("name")
-  type            String?           @map("type")
-  profiles        Profile_Skills[]
-  resource_skills resource_skills[]
-  role_skills     role_skills[]
+  skillId             Int                  @id @map("id")
+  name                String?              @map("name")
+  type                String?              @map("type")
+  profiles            Profile_Skills[]
+  resource_skills     resource_skills[]
+  role_skills         role_skills[]
+  profileSkillRatings ProfileSkillRating[]
 
   @@map("skills")
 }
@@ -100,18 +102,36 @@ model Profile {
   educationhistory Json?
   yearofexperience Int?
   profexperience   Json?
+  projects         Json?
   skills           String?
   resumeid         Int?
   careerplanid     Int?
   location         String?
   Skills           Profile_Skills[]
   conversations    Conversation[]
-  resume           Resume?            @relation(fields: [resumeid], references: [resumeid])
-  dreamRole        Role?              @relation(fields: [roleId], references: [roleId])
+  resume           Resume?              @relation(fields: [resumeid], references: [resumeid])
+  dreamRole        Role?                @relation(fields: [roleId], references: [roleId])
   Resources        profile_resource[]
   User             User?
+  skillRatings     ProfileSkillRating[]
 
   @@map("profile")
+}
+
+model ProfileSkillRating {
+  id          Int      @id @default(autoincrement())
+  profileId   Int
+  roleId      Int
+  skillId     Int
+  proficiency Int
+  rationale   String?
+  updatedAt   DateTime @updatedAt
+  Profile     Profile  @relation(fields: [profileId], references: [profile_ID], onDelete: Cascade)
+  Role        Role     @relation(fields: [roleId], references: [roleId])
+  Skill       Skill    @relation(fields: [skillId], references: [skillId])
+
+  @@unique([profileId, roleId, skillId])
+  @@map("profile_skill_ratings")
 }
 
 model Profile_Skills {

@@ -8,9 +8,9 @@ export interface RoleMatchScore {
   score: number;
 }
 
-type Category = 'CL' | 'WF' | 'DB';
+export type Category = 'CL' | 'WF' | 'DB';
 
-const CATEGORY_BY_SKILL_TYPE: Record<string, Category> = {
+export const CATEGORY_BY_SKILL_TYPE: Record<string, Category> = {
   'Coding Language': 'CL',
   'Web Framework': 'WF',
   'Database': 'DB',

@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import type { EducationEntry, ExperienceEntry, EditableResume } from "./editableResume";
+import type { EducationEntry, ExperienceEntry, ProjectEntry, EditableResume } from "./editableResume";
 
 const inputStyle = {
   borderColor: "rgba(21,16,12,0.15)",
@@ -82,6 +82,48 @@ export function EditableResumeForm({
 
   function removeEducationEntry(index: number) {
     update({ educationHistory: value.educationHistory.filter((_, i) => i !== index) });
+  }
+
+  function updateProjectEntry(index: number, patch: Partial<ProjectEntry>) {
+    update({
+      projects: value.projects.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)),
+    });
+  }
+
+  function addProjectEntry() {
+    update({
+      projects: [...value.projects, { name: "", dateRange: "", bullets: [] }],
+    });
+  }
+
+  function removeProjectEntry(index: number) {
+    update({ projects: value.projects.filter((_, i) => i !== index) });
+  }
+
+  function updateProjectBullet(projIndex: number, bulletIndex: number, bulletValue: string) {
+    update({
+      projects: value.projects.map((entry, i) =>
+        i === projIndex
+          ? { ...entry, bullets: entry.bullets.map((b, bi) => (bi === bulletIndex ? bulletValue : b)) }
+          : entry,
+      ),
+    });
+  }
+
+  function addProjectBullet(projIndex: number) {
+    update({
+      projects: value.projects.map((entry, i) =>
+        i === projIndex ? { ...entry, bullets: [...entry.bullets, ""] } : entry,
+      ),
+    });
+  }
+
+  function removeProjectBullet(projIndex: number, bulletIndex: number) {
+    update({
+      projects: value.projects.map((entry, i) =>
+        i === projIndex ? { ...entry, bullets: entry.bullets.filter((_, bi) => bi !== bulletIndex) } : entry,
+      ),
+    });
   }
 
   function updateExperienceEntry(index: number, patch: Partial<ExperienceEntry>) {
@@ -181,6 +223,68 @@ export function EditableResumeForm({
           >
             <Plus className="w-3.5 h-3.5" />
             Add education entry
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Projects">
+        <div className="flex flex-col gap-4">
+          {value.projects.map((entry, i) => (
+            <div key={i} className="rounded-xl border p-4" style={{ borderColor: "rgba(21,16,12,0.1)" }}>
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-xs font-semibold" style={{ color: "#8a7462" }}>
+                  Entry {i + 1}
+                </span>
+                <button onClick={() => removeProjectEntry(i)} aria-label="Remove project entry">
+                  <Trash2 className="w-3.5 h-3.5" style={{ color: "#dc2626" }} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <TextField label="Project name" value={entry.name} onChange={(v) => updateProjectEntry(i, { name: v })} />
+                <TextField
+                  label="Date range (optional)"
+                  value={entry.dateRange}
+                  onChange={(v) => updateProjectEntry(i, { dateRange: v })}
+                  placeholder="e.g. Fall 2024"
+                />
+              </div>
+
+              <span className="block text-xs font-medium mb-1.5" style={{ color: "#55371e" }}>
+                Bullets
+              </span>
+              <div className="flex flex-col gap-2 mb-2">
+                {entry.bullets.map((bullet, bi) => (
+                  <div key={bi} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={bullet}
+                      onChange={(e) => updateProjectBullet(i, bi, e.target.value)}
+                      className="flex-1 text-sm rounded-lg border px-3 py-2"
+                      style={inputStyle}
+                    />
+                    <button onClick={() => removeProjectBullet(i, bi)} aria-label="Remove bullet">
+                      <Trash2 className="w-3.5 h-3.5" style={{ color: "#dc2626" }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => addProjectBullet(i)}
+                className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg"
+                style={{ backgroundColor: "#f4f1f2", color: "#15100c" }}
+              >
+                <Plus className="w-3 h-3" />
+                Add bullet
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={addProjectEntry}
+            className="self-start flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg"
+            style={{ backgroundColor: "#f4f1f2", color: "#15100c" }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add project entry
           </button>
         </div>
       </SectionCard>

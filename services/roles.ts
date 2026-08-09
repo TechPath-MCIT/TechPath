@@ -1,5 +1,6 @@
 // services/roles.ts
 import { prisma } from '@/lib/db';
+import { CATEGORY_BY_SKILL_TYPE, type Category } from '@/services/match';
 
 /**
  * Fetches a bounded list of roles from the cloud database
@@ -38,6 +39,57 @@ function toStringArray(value: unknown): string[] {
     : [];
 }
 
+type RoleSkillRow = {
+  Skill_ID: number | null;
+  count: number | null;
+  skills: { name: string | null; type: string | null } | null;
+};
+
+/**
+ * Picks a role's top skills balanced across categories (Coding Language /
+ * Web Framework / Database) rather than a single flat ranking by count —
+ * a flat ranking lets Coding Language skills dominate every role's top N
+ * (verified against real data: they occupy nearly all of the top 6-10 slots
+ * for every sampled role), hiding the Web Framework/Database skills that
+ * still factor into the overall match score (see services/match.ts, which
+ * already does this same per-category split for that score).
+ */
+function selectBalancedTopSkills(rows: RoleSkillRow[], perCategory: number) {
+  const byCategory: Record<Category, RoleSkillRow[]> = { CL: [], WF: [], DB: [] };
+
+  for (const row of rows) {
+    if (row.Skill_ID === null || typeof row.skills?.name !== "string") continue;
+    const category = CATEGORY_BY_SKILL_TYPE[row.skills?.type ?? ""];
+    if (!category) continue;
+    byCategory[category].push(row);
+  }
+
+  return (["CL", "WF", "DB"] as const).flatMap((category) =>
+    byCategory[category]
+      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+      .slice(0, perCategory),
+  );
+}
+
+/**
+ * Fetches a role's top skills balanced across categories (see
+ * selectBalancedTopSkills) — used for the landscape drawer's individual
+ * skill list and the AI proficiency-rating skill set.
+ */
+export async function getRoleTopSkillsBalanced(roleId: number, perCategory: number = 2) {
+  const rows = await prisma.role_skills.findMany({
+    where: { Role_ID: roleId },
+    include: { skills: true },
+    orderBy: { count: "desc" },
+  });
+
+  return selectBalancedTopSkills(rows, perCategory).map((row) => ({
+    skillId: row.Skill_ID as number,
+    name: row.skills!.name as string,
+    weight: row.count,
+  }));
+}
+
 export async function getLandscapeRoles() {
   const roles = await prisma.role.findMany({
     include: {
@@ -68,19 +120,14 @@ export async function getLandscapeRoles() {
             typicalJobTitles: toStringArray(
               role.typicalJobTitles,
             ),
-            topSkills: role.role_skills
-              .filter(
-                (item) =>
-                  item.Skill_ID !== null &&
-                  typeof item.skills?.name === "string",
-              )
-              .slice(0, 4)
-              .map((item) => ({
+            topSkills: selectBalancedTopSkills(role.role_skills, 2).map(
+              (item) => ({
                 skillId: item.Skill_ID as number,
                 name: item.skills!.name as string,
                 weight: item.count,
                 score: null,
-              })),
+              }),
+            ),
           },
         ]
       : [],

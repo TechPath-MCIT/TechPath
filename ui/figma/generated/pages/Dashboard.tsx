@@ -282,6 +282,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           <div className="col-span-9">
             <JobLandscapeNew
               roles={previewRoles}
+              profileId={0}
               targetRoleId={null}
               matchScores={previewMatchScores}
               matchesLoading={false}
