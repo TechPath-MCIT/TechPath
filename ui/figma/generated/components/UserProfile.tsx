@@ -1,4 +1,4 @@
-import { MapPin, Mail, Briefcase, Edit2, Target, X, ChevronDown, UserCircle, Search } from 'lucide-react';
+import { MapPin, Mail, Briefcase, Edit2, Target, X, ChevronDown, UserCircle, Search, Upload } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { jobTaxonomyData } from '../data/jobData';
 
@@ -44,6 +44,7 @@ interface UserProfileProps {
   onSetTargetRole?: (target: RoleOption) => Promise<void>;
   onSetLocation?: (location: string) => Promise<void>;
   onEditProfile?: () => void;
+  onUploadResume?: () => void;
 }
 
 export type RoleOption = {
@@ -72,6 +73,7 @@ export function UserProfile({
   onSetTargetRole = async () => {},
   onSetLocation,
   onEditProfile,
+  onUploadResume,
 }: UserProfileProps) {
   const [userLocation, setUserLocation] = useState(location);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -222,6 +224,16 @@ export function UserProfile({
           >
             <Edit2 className="w-3.5 h-3.5" />
             Edit Profile
+          </button>
+        )}
+        {onUploadResume && (
+          <button
+            onClick={onUploadResume}
+            className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-80"
+            style={{ backgroundColor: 'rgba(2,116,111,0.08)', color: '#02746f' }}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload New Resume
           </button>
         )}
       </div>

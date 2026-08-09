@@ -225,6 +225,7 @@ export default function LandscapeContainer({
           onSetTargetRole={saveTargetRole}
           onSetLocation={saveLocation}
           onEditProfile={() => router.push("/profile")}
+          onUploadResume={() => router.push("/resume-upload")}
         />
       </div>
 
