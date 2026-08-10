@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
-  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download, Search, X
+  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Search, X
 } from 'lucide-react';
 import { sampleUserProfile } from "../data/learningResources";
 
@@ -382,7 +382,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
+  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -391,10 +391,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
   const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
   const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
-  const [uploadedResumes, setUploadedResumes] = useState<{ name: string; uploadDate: string; url: string }[]>([
-    { name: 'Resume_2026_May.pdf', uploadDate: '2026-05-15', url: '#' },
-    { name: 'Resume_2025_Dec.pdf', uploadDate: '2025-12-10', url: '#' },
-  ]);
 
   const combinedResources: DisplayResource[] = resources
   .filter(
@@ -568,18 +564,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       );
     } finally {
       setIsSendingAgentUpdate(false);
-    }
-  };
-
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      const newResume = {
-        name: file.name,
-        uploadDate: new Date().toISOString().split('T')[0],
-        url: URL.createObjectURL(file),
-      };
-      setUploadedResumes([newResume, ...uploadedResumes]);
     }
   };
 
@@ -1131,16 +1115,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
           >
             Activities
           </button>
-          <button
-            onClick={() => setProfileSection('resume')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'resume' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'resume' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Resume
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -1500,75 +1474,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
           })()}
 
           {/* Resume Tab */}
-          {profileSection === 'resume' && (
-            <div className="space-y-4">
-              {/* AI Info */}
-              <div className="p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)' }}>
-                <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#02746f' }} />
-                <p className="text-xs" style={{ color: '#55371e' }}>
-                  Upload your resume and AI will automatically parse and populate your Experience and Projects tabs.
-                </p>
-              </div>
-
-              {/* Upload Section */}
-              <div className="p-4 rounded-lg border-2 border-dashed" style={{ borderColor: 'rgba(2, 116, 111, 0.3)' }}>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleResumeUpload}
-                  className="hidden"
-                  id="resume-upload"
-                />
-                <label
-                  htmlFor="resume-upload"
-                  className="flex flex-col items-center gap-2 cursor-pointer"
-                >
-                  <Upload className="w-8 h-8" style={{ color: '#02746f' }} />
-                  <span className="text-sm font-medium" style={{ color: '#15100c' }}>
-                    Upload Resume (PDF)
-                  </span>
-                  <span className="text-xs" style={{ color: '#55371e' }}>
-                    Click to browse or drag and drop
-                  </span>
-                </label>
-              </div>
-
-              {/* Uploaded Resumes */}
-              <div>
-                <h3 className="font-semibold mb-3" style={{ color: '#15100c' }}>
-                  Uploaded Resumes
-                </h3>
-                <div className="space-y-2">
-                  {uploadedResumes.map((resume, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-lg flex items-center justify-between"
-                      style={{ backgroundColor: 'rgba(184, 226, 212, 0.15)' }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-5 h-5" style={{ color: '#02746f' }} />
-                        <div>
-                          <div className="text-sm font-medium" style={{ color: '#15100c' }}>
-                            {resume.name}
-                          </div>
-                          <div className="text-xs" style={{ color: '#55371e' }}>
-                            Uploaded: {new Date(resume.uploadDate).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-                      <a
-                        href={resume.url}
-                        download={resume.name}
-                        className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" style={{ color: '#02746f' }} />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
