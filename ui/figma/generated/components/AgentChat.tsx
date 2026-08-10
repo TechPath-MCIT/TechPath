@@ -31,6 +31,7 @@ interface AgentChatProps {
   onDeleteConversation?: (conversationId: string) => void;
   isSending?: boolean;
   errorMessage?: string | null;
+  onRetry?: () => void;
 }
 
 export function AgentChat({
@@ -46,6 +47,7 @@ export function AgentChat({
   onDeleteConversation,
   isSending = false,
   errorMessage = null,
+  onRetry,
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -275,8 +277,17 @@ export function AgentChat({
         {/* Input */}
         <div className="p-6 border-t" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
           {errorMessage && (
-            <p className="text-xs mb-2" style={{ color: '#ef4444' }}>
-              {errorMessage}
+            <p className="text-xs mb-2 flex items-center gap-2" style={{ color: '#ef4444' }}>
+              <span>{errorMessage}</span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  disabled={isSending}
+                  className="text-xs font-medium underline underline-offset-2 hover:opacity-70 disabled:opacity-50"
+                >
+                  Retry
+                </button>
+              )}
             </p>
           )}
           <div className="flex items-center gap-3">

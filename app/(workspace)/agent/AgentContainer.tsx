@@ -77,6 +77,13 @@ export default function AgentContainer() {
 
   const conversationIdRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastAttemptRef = useRef<{
+    trimmed: string;
+    userMessage: AgentMessage;
+    priorMessages: AgentMessage[];
+    wasNewConversation: boolean;
+    history: { role: "assistant" | "user"; content: string }[];
+  } | null>(null);
 
   const SEND_TIMEOUT_MS = 30000;
 
@@ -126,29 +133,13 @@ export default function AgentContainer() {
     [conversations],
   );
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed || isSending) return;
-
-    const priorMessages = messages;
-    const wasNewConversation = conversationIdRef.current === null;
-
-    const userMessage: AgentMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: trimmed,
-      timestamp: new Date(),
-    };
-
-    const history = priorMessages
-      .filter((m) => m.id !== "greeting")
-      .map((m) => ({
-        role: (m.role === "agent" ? "assistant" : "user") as "assistant" | "user",
-        content: m.content,
-      }));
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
+  const performSend = useCallback(async (
+    trimmed: string,
+    userMessage: AgentMessage,
+    priorMessages: AgentMessage[],
+    wasNewConversation: boolean,
+    history: { role: "assistant" | "user"; content: string }[],
+  ) => {
     setIsSending(true);
     setError(null);
 
@@ -335,7 +326,41 @@ export default function AgentContainer() {
       abortControllerRef.current = null;
       setIsSending(false);
     }
-  }, [conversations, inputValue, isSending, messages, profile.profileId, router]);
+  }, [conversations, profile.profileId, router]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isSending) return;
+
+    const priorMessages = messages;
+    const wasNewConversation = conversationIdRef.current === null;
+
+    const userMessage: AgentMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: trimmed,
+      timestamp: new Date(),
+    };
+
+    const history = priorMessages
+      .filter((m) => m.id !== "greeting")
+      .map((m) => ({
+        role: (m.role === "agent" ? "assistant" : "user") as "assistant" | "user",
+        content: m.content,
+      }));
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+
+    lastAttemptRef.current = { trimmed, userMessage, priorMessages, wasNewConversation, history };
+    await performSend(trimmed, userMessage, priorMessages, wasNewConversation, history);
+  }, [inputValue, isSending, messages, performSend]);
+
+  const handleRetry = useCallback(async () => {
+    if (!lastAttemptRef.current || isSending) return;
+    const { trimmed, userMessage, priorMessages, wasNewConversation, history } = lastAttemptRef.current;
+    await performSend(trimmed, userMessage, priorMessages, wasNewConversation, history);
+  }, [isSending, performSend]);
 
   const handleCancelSend = useCallback(() => {
     abortControllerRef.current?.abort("cancelled");
@@ -377,6 +402,7 @@ export default function AgentContainer() {
         onDeleteConversation={handleDeleteConversation}
         isSending={isSending}
         errorMessage={error}
+        onRetry={handleRetry}
       />
     </div>
   );
