@@ -259,7 +259,7 @@ export function AgentChat({
                 }}
               >
                 {message.role === 'agent' ? (
-                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0">
+                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0 [&_a]:text-[#02746f] [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:opacity-70">
                     <ReactMarkdown remarkPlugins={[remarkBreaks]}>{message.content}</ReactMarkdown>
                   </div>
                 ) : (

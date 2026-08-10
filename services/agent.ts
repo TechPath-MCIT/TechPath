@@ -8,6 +8,7 @@ import * as skills from '@/services/skills';
 import * as roles from '@/services/roles';
 import * as resourcesSvc from '@/services/resources';
 import * as match from '@/services/match';
+import * as jobsSvc from '@/services/jobs';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -67,6 +68,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
     "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, add_project, remove_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
+    "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
@@ -490,6 +492,26 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
           missingSkillCount: missingSkills.length,
           recommendations,
         };
+      },
+    }),
+    find_live_job_postings: tool({
+      description:
+        "Search for real, currently open job postings matching a query. Use this when the user asks what's actually hiring right now, wants to see real job listings, or asks about current openings for a role — not for general role information, which get_role_details already covers. Each result includes an applyUrl and a source (the site the listing came from) — always include both for every job you list in your reply (as a markdown link and its source), don't just name the job and company. These listings can go stale between when they were indexed and when the user clicks — after listing the jobs, briefly note that some postings may have already been filled or taken down, and suggest checking the company's careers page directly if a link doesn't work.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe('The job search query, e.g. "software engineer in Chicago" or "data scientist remote".'),
+      }),
+      execute: async ({ query }) => {
+        try {
+          const jobs = await jobsSvc.searchLiveJobs(query, 5);
+          return { success: true, jobs };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to search live job postings.',
+          };
+        }
       },
     }),
   };
