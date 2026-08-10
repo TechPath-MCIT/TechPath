@@ -9,6 +9,8 @@ import * as roles from '@/services/roles';
 import * as resourcesSvc from '@/services/resources';
 import * as match from '@/services/match';
 import * as jobsSvc from '@/services/jobs';
+import * as skillRatings from '@/services/skillRatings';
+import { rateSkillProficiencies } from '@/app/actions/skillProficiency';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -70,6 +72,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
+    "Use get_skill_proficiency when the user asks how strong, how good, or how ready they are on a role's skills — it's a deeper, AI-rated 1-10 score with a rationale per skill, versus get_skill_gaps' plain have/missing split. Mention the rationale when it adds useful context, and be upfront that these scores are AI estimates based on their resume, not a certified assessment.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
@@ -513,6 +516,79 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
             error: error instanceof Error ? error.message : 'Failed to search live job postings.',
           };
         }
+      },
+    }),
+    get_skill_proficiency: tool({
+      description:
+        "Get an AI-estimated 1-10 proficiency score, with a one-sentence rationale grounded in the resume, for each of a role's top skills — deeper than get_skill_gaps' plain have/missing split. Use this when the user asks how strong, how good, or how ready they are on a role's skills, not just whether they're missing entirely. Results are cached per profile+role+skill, so repeat calls for the same role are free; only newly-seen skills trigger a rating pass.",
+      inputSchema: z.object({
+        roleId: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "The numeric id of the role whose top skills to rate, from the available roles list. Defaults to the target role already on the profile if omitted.",
+          ),
+      }),
+      execute: async ({ roleId }) => {
+        let resolvedRoleId = roleId;
+        const profile = await profiles.getProfileById(profileId);
+        if (resolvedRoleId == null) {
+          resolvedRoleId = profile?.roleId ?? undefined;
+        }
+        if (resolvedRoleId == null) {
+          return { success: false, error: 'No role was specified and the user has not set a target role yet.' };
+        }
+        if (!profile) {
+          return { success: false, error: 'Profile not found.' };
+        }
+
+        const role = availableRoles.find((candidate) => candidate.roleId === resolvedRoleId);
+        if (!role) {
+          return { success: false, error: `${resolvedRoleId} is not a valid role id.` };
+        }
+
+        const topSkills = await roles.getRoleTopSkillsBalanced(resolvedRoleId, 2);
+        const ratedSkills = topSkills.filter(
+          (skill): skill is typeof skill & { name: string } => typeof skill.name === 'string',
+        );
+
+        const cached = await skillRatings.getCachedRatings(profileId, resolvedRoleId);
+        const cachedBySkillId = new Map(cached.map((row) => [row.skillId, row]));
+        const missing = ratedSkills.filter((skill) => !cachedBySkillId.has(skill.skillId));
+
+        if (missing.length > 0) {
+          const profileContext = await profiles.buildSkillProficiencyContext(profile);
+          const newRatings = await rateSkillProficiencies(
+            profileContext,
+            missing.map((skill) => ({ skillId: skill.skillId, name: skill.name })),
+          );
+          await skillRatings.upsertRatings(profileId, resolvedRoleId, newRatings);
+          for (const rating of newRatings) {
+            cachedBySkillId.set(rating.skillId, {
+              id: 0,
+              profileId,
+              roleId: resolvedRoleId,
+              skillId: rating.skillId,
+              proficiency: rating.proficiency,
+              rationale: rating.rationale,
+              updatedAt: new Date(),
+            });
+          }
+        }
+
+        return {
+          success: true,
+          roleName: role.name,
+          ratings: ratedSkills.map((skill) => {
+            const rating = cachedBySkillId.get(skill.skillId);
+            return {
+              skillName: skill.name,
+              proficiency: rating?.proficiency ?? null,
+              rationale: rating?.rationale ?? null,
+            };
+          }),
+        };
       },
     }),
     generate_career_plan: tool({

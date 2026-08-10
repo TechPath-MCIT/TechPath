@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import {Prisma} from "@prisma/client";
 import {parsed_resume} from "@/app/actions/resume"
 import * as skills from '@/services/skills'
+import * as resumes from '@/services/resumes'
+import type { ProfileContext } from '@/app/actions/skillProficiency'
 /**
  * Fetches a bounded list of profiles from the cloud database
  * @param limit Number of records to return
@@ -325,6 +327,46 @@ export function extractProjects(projects: unknown): {
                 : [],
         }];
     });
+}
+
+/**
+ * Builds the ProfileContext shape rateSkillProficiencies expects, from a raw
+ * profile row (plus its linked resume's raw text, when available). Shared by
+ * the skill-ratings route and the agent's get_skill_proficiency tool so both
+ * feed the AI rater identically-shaped evidence.
+ */
+export async function buildSkillProficiencyContext(profile: {
+    skills: string | null;
+    highestDegree: string | null;
+    yearofexperience: number | null;
+    profexperience: unknown;
+    educationhistory: unknown;
+    projects: unknown;
+    resumeid: number | null;
+}): Promise<ProfileContext> {
+    const experiences = Array.isArray(profile.profexperience)
+        ? (profile.profexperience as ProfileContext['experiences'])
+        : [];
+
+    const educationHistory = Array.isArray(profile.educationhistory)
+        ? (profile.educationhistory as ProfileContext['educationHistory'])
+        : [];
+
+    const projects = extractProjects(profile.projects);
+
+    const resume = profile.resumeid ? await resumes.getResumeById(profile.resumeid) : null;
+
+    return {
+        skills: profile.skills
+            ? profile.skills.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+        highestDegree: profile.highestDegree || null,
+        yearsOfExperience: profile.yearofexperience,
+        experiences,
+        educationHistory,
+        projects,
+        rawResumeText: resume?.rawtext ?? null,
+    };
 }
 
 export async function getSkillsByProfile(profile_ID: number) {
