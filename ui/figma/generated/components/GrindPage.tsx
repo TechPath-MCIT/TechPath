@@ -505,16 +505,49 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
         body: JSON.stringify({ message }),
       });
 
-      const body = await response.json();
-
-      if (!response.ok || !body.success) {
-        throw new Error(body.error ?? "Failed to send update to the agent.");
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to send update to the agent.");
       }
 
-      setAgentUpdateReply(body.reply);
+      // The endpoint streams newline-delimited JSON — accumulate the delta
+      // chunks into the final reply rather than parsing the body as one
+      // JSON object.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullReply = "";
+      let profileUpdated = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as
+            | { type: "delta"; text: string }
+            | { type: "done"; conversationId: number; profileUpdated: boolean }
+            | { type: "error"; error: string };
+
+          if (event.type === "delta") {
+            fullReply += event.text;
+            setAgentUpdateReply(fullReply);
+          } else if (event.type === "done") {
+            profileUpdated = event.profileUpdated;
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        }
+      }
+
       setAgentInputText('');
 
-      if (body.profileUpdated) {
+      if (profileUpdated) {
         router.refresh();
       }
     } catch (error) {
