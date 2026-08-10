@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import {
   Filter, BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
-  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Upload, Download, Search, X
+  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Search, X
 } from 'lucide-react';
 import { sampleUserProfile } from "../data/learningResources";
 
@@ -118,11 +118,18 @@ interface VideoApiResponse {
   data?: string;
 }
 
+interface GrindProject {
+  name: string;
+  dateRange?: string;
+  bullets: string[];
+}
+
 interface GrindPageProps {
   profileId: number;
   targetRole: string;
   skills: string[];
   experience: string[];
+  projects: GrindProject[];
   resources: ResourceApiItem[];
   isLoadingResources: boolean;
   resourcesError: string | null;
@@ -157,7 +164,7 @@ function ResourceSkillBadges({ resource, className }: { resource: ProfileResourc
   );
 }
 
-export function GrindPage({ profileId, targetRole, skills, experience, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+export function GrindPage({ profileId, targetRole, skills, experience, projects, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
   const router = useRouter();
 
   // Each retrieved YouTube video for a target-role skill.
@@ -375,7 +382,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects' | 'resume'>('ongoing');
+  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -384,10 +391,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
   const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
   const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
   const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
-  const [uploadedResumes, setUploadedResumes] = useState<{ name: string; uploadDate: string; url: string }[]>([
-    { name: 'Resume_2026_May.pdf', uploadDate: '2026-05-15', url: '#' },
-    { name: 'Resume_2025_Dec.pdf', uploadDate: '2025-12-10', url: '#' },
-  ]);
 
   const combinedResources: DisplayResource[] = resources
   .filter(
@@ -505,16 +508,54 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
         body: JSON.stringify({ message }),
       });
 
-      const body = await response.json();
-
-      if (!response.ok || !body.success) {
-        throw new Error(body.error ?? "Failed to send update to the agent.");
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Failed to send update to the agent.");
       }
 
-      setAgentUpdateReply(body.reply);
+      // The endpoint streams newline-delimited JSON — accumulate the delta
+      // chunks into the final reply rather than parsing the body as one
+      // JSON object.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullReply = "";
+      let profileUpdated = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as
+            | { type: "delta"; text: string }
+            | { type: "done"; conversationId: number; profileUpdated: boolean }
+            | { type: "error"; error: string };
+
+          if (event.type === "delta") {
+            fullReply += event.text;
+            setAgentUpdateReply(fullReply);
+          } else if (event.type === "done") {
+            profileUpdated = event.profileUpdated;
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        }
+      }
+
       setAgentInputText('');
 
-      if (body.profileUpdated) {
+      if (profileUpdated) {
+        // Refresh the shared profile data (skills, experience, projects) and
+        // this page's own resource pairings (course status badges, Ongoing
+        // tab) — the agent may have changed either via mark_course_status,
+        // add_skills, etc.
+        await loadProfileResources();
         router.refresh();
       }
     } catch (error) {
@@ -523,18 +564,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
       );
     } finally {
       setIsSendingAgentUpdate(false);
-    }
-  };
-
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      const newResume = {
-        name: file.name,
-        uploadDate: new Date().toISOString().split('T')[0],
-        url: URL.createObjectURL(file),
-      };
-      setUploadedResumes([newResume, ...uploadedResumes]);
     }
   };
 
@@ -970,7 +999,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
             <textarea
               value={agentInputText}
               onChange={e => setAgentInputText(e.target.value)}
-              placeholder="Tell the AI what to update... e.g., 'Add AWS to my skills' or 'Set my target role to Data Scientist' or 'I now have 3 years of experience'"
+              placeholder="Tell the AI what to update... e.g., 'I finished the Networked Systems course' or 'Add a project called Chess Engine' or 'Add AWS to my skills'"
               disabled={isSendingAgentUpdate}
               className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
               style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
@@ -1085,16 +1114,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
             }}
           >
             Activities
-          </button>
-          <button
-            onClick={() => setProfileSection('resume')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'resume' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'resume' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Resume
           </button>
         </div>
 
@@ -1376,33 +1395,44 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
           {/* Projects Tab */}
           {profileSection === 'projects' && (
             <div className="space-y-3">
-              {userProfile.resume.projects.map((project, idx) => {
-                const key = `proj-${idx}`;
-                const isOpen = expandedItem === key;
-                return (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-lg transition-all cursor-pointer"
-                    style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
-                    onClick={() => setExpandedItem(isOpen ? null : key)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium" style={{ color: '#15100c' }}>{project.name}</div>
-                      <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                    </div>
-                    {isOpen && (
-                      <div className="mt-3 border-t pt-3 space-y-2" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
-                        <p className="text-sm" style={{ color: '#55371e' }}>{project.description}</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {project.skills.map((s, sidx) => (
-                            <span key={sidx} className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: 'rgba(253,211,87,0.2)', color: '#15100c' }}>{s}</span>
-                          ))}
+              {projects.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No projects yet.</p>
+              ) : (
+                projects.map((project, idx) => {
+                  const key = `proj-${idx}`;
+                  const isOpen = expandedItem === key;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-lg transition-all cursor-pointer"
+                      style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
+                      onClick={() => setExpandedItem(isOpen ? null : key)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium" style={{ color: '#15100c' }}>{project.name}</div>
+                          {project.dateRange && (
+                            <div className="text-xs" style={{ color: '#55371e' }}>{project.dateRange}</div>
+                          )}
                         </div>
+                        {project.bullets.length > 0 && (
+                          <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {isOpen && project.bullets.length > 0 && (
+                        <ul className="mt-3 space-y-1 border-t pt-3" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
+                          {project.bullets.map((bullet, bidx) => (
+                            <li key={bidx} className="flex gap-2 text-sm" style={{ color: '#55371e' }}>
+                              <span style={{ color: '#02746f' }}>•</span>
+                              <span>{bullet}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 
@@ -1444,75 +1474,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
           })()}
 
           {/* Resume Tab */}
-          {profileSection === 'resume' && (
-            <div className="space-y-4">
-              {/* AI Info */}
-              <div className="p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'rgba(184, 226, 212, 0.1)' }}>
-                <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#02746f' }} />
-                <p className="text-xs" style={{ color: '#55371e' }}>
-                  Upload your resume and AI will automatically parse and populate your Experience and Projects tabs.
-                </p>
-              </div>
-
-              {/* Upload Section */}
-              <div className="p-4 rounded-lg border-2 border-dashed" style={{ borderColor: 'rgba(2, 116, 111, 0.3)' }}>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleResumeUpload}
-                  className="hidden"
-                  id="resume-upload"
-                />
-                <label
-                  htmlFor="resume-upload"
-                  className="flex flex-col items-center gap-2 cursor-pointer"
-                >
-                  <Upload className="w-8 h-8" style={{ color: '#02746f' }} />
-                  <span className="text-sm font-medium" style={{ color: '#15100c' }}>
-                    Upload Resume (PDF)
-                  </span>
-                  <span className="text-xs" style={{ color: '#55371e' }}>
-                    Click to browse or drag and drop
-                  </span>
-                </label>
-              </div>
-
-              {/* Uploaded Resumes */}
-              <div>
-                <h3 className="font-semibold mb-3" style={{ color: '#15100c' }}>
-                  Uploaded Resumes
-                </h3>
-                <div className="space-y-2">
-                  {uploadedResumes.map((resume, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-lg flex items-center justify-between"
-                      style={{ backgroundColor: 'rgba(184, 226, 212, 0.15)' }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-5 h-5" style={{ color: '#02746f' }} />
-                        <div>
-                          <div className="text-sm font-medium" style={{ color: '#15100c' }}>
-                            {resume.name}
-                          </div>
-                          <div className="text-xs" style={{ color: '#55371e' }}>
-                            Uploaded: {new Date(resume.uploadDate).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-                      <a
-                        href={resume.url}
-                        download={resume.name}
-                        className="p-2 hover:bg-stone-100 rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" style={{ color: '#02746f' }} />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

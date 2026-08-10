@@ -112,6 +112,7 @@ export default function GrindContainer() {
         targetRole={profile.targetRole?.name ?? ""}
         skills={profile.skills}
         experience={profile.experience}
+        projects={profile.projects}
         resources={resources}
         isLoadingResources={isLoadingResources}
         resourcesError={resourcesError}

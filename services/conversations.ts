@@ -29,11 +29,12 @@ export async function createConversation(profileId: number, title?: string, init
  * @param profileId the profile to list conversations for
  * @param take optional cap on how many of the most recent conversations to return
  */
-export async function getConversationsByProfile(profileId: number, take?: number) {
+export async function getConversationsByProfile(profileId: number, take?: number, skip?: number) {
     return prisma.conversation.findMany({
         where: { profileId },
         orderBy: { updatedAt: 'desc' },
         take,
+        skip,
     });
 }
 

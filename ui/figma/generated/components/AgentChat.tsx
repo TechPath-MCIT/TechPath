@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Square } from 'lucide-react';
+import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Square, Search, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 
@@ -31,6 +31,10 @@ interface AgentChatProps {
   onDeleteConversation?: (conversationId: string) => void;
   isSending?: boolean;
   errorMessage?: string | null;
+  onRetry?: () => void;
+  hasMoreConversations?: boolean;
+  isLoadingMoreConversations?: boolean;
+  onLoadMoreConversations?: () => void;
 }
 
 export function AgentChat({
@@ -46,10 +50,25 @@ export function AgentChat({
   onDeleteConversation,
   isSending = false,
   errorMessage = null,
+  onRetry,
+  hasMoreConversations = false,
+  isLoadingMoreConversations = false,
+  onLoadMoreConversations,
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [conversationSearch, setConversationSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const filteredConversations = conversationSearch.trim()
+    ? conversations.filter((conversation) => {
+        const query = conversationSearch.trim().toLowerCase();
+        return (
+          conversation.title.toLowerCase().includes(query) ||
+          conversation.lastMessage.toLowerCase().includes(query)
+        );
+      })
+    : conversations;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -78,11 +97,37 @@ export function AgentChat({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
+          <div className="relative mb-3">
+            <Search
+              className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: '#55371e' }}
+            />
+            <input
+              type="text"
+              value={conversationSearch}
+              onChange={(e) => setConversationSearch(e.target.value)}
+              placeholder="Search conversations…"
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg text-xs border outline-none"
+              style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+            />
+            {conversationSearch && (
+              <button
+                onClick={() => setConversationSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+                title="Clear search"
+              >
+                <X className="w-3 h-3" style={{ color: '#55371e' }} />
+              </button>
+            )}
+          </div>
           <h3 className="text-xs font-semibold mb-3 px-2" style={{ color: '#55371e' }}>
             RECENT
           </h3>
           <div className="space-y-2">
-            {conversations.map((conversation) => (
+            {filteredConversations.length === 0 && (
+              <p className="text-xs px-2" style={{ color: '#55371e' }}>No conversations found.</p>
+            )}
+            {filteredConversations.map((conversation) => (
               <div key={conversation.id} className="relative group">
                 <button
                   onClick={() => onSelectConversation(conversation.id)}
@@ -155,6 +200,16 @@ export function AgentChat({
               </div>
             ))}
           </div>
+          {!conversationSearch.trim() && hasMoreConversations && (
+            <button
+              onClick={onLoadMoreConversations}
+              disabled={isLoadingMoreConversations}
+              className="w-full mt-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-stone-100 disabled:opacity-50"
+              style={{ color: '#02746f' }}
+            >
+              {isLoadingMoreConversations ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -204,7 +259,7 @@ export function AgentChat({
                 }}
               >
                 {message.role === 'agent' ? (
-                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0">
+                  <div className="text-sm leading-relaxed space-y-3 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0 [&_a]:text-[#02746f] [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:opacity-70">
                     <ReactMarkdown remarkPlugins={[remarkBreaks]}>{message.content}</ReactMarkdown>
                   </div>
                 ) : (
@@ -238,8 +293,17 @@ export function AgentChat({
         {/* Input */}
         <div className="p-6 border-t" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
           {errorMessage && (
-            <p className="text-xs mb-2" style={{ color: '#ef4444' }}>
-              {errorMessage}
+            <p className="text-xs mb-2 flex items-center gap-2" style={{ color: '#ef4444' }}>
+              <span>{errorMessage}</span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  disabled={isSending}
+                  className="text-xs font-medium underline underline-offset-2 hover:opacity-70 disabled:opacity-50"
+                >
+                  Retry
+                </button>
+              )}
             </p>
           )}
           <div className="flex items-center gap-3">
@@ -284,7 +348,7 @@ export function AgentChat({
             )}
           </div>
           <p className="text-xs mt-2 text-center" style={{ color: '#55371e' }}>
-            Try: "Help me learn Python" • "Update my profile" • "What's the salary for ML engineers?"
+            Try: "Give me a full career plan" • "What jobs are hiring right now?" • "How strong am I on the skills I need?"
           </p>
         </div>
       </div>

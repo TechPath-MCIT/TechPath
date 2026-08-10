@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import {Prisma} from "@prisma/client";
 import {parsed_resume} from "@/app/actions/resume"
 import * as skills from '@/services/skills'
+import * as resumes from '@/services/resumes'
+import type { ProfileContext } from '@/app/actions/skillProficiency'
 /**
  * Fetches a bounded list of profiles from the cloud database
  * @param limit Number of records to return
@@ -101,6 +103,65 @@ export async function addWorkExperience(profile_ID: number, entry: WorkExperienc
         where: { profile_ID },
         data: { profexperience: updated as unknown as Prisma.InputJsonValue },
     });
+}
+
+export type ProjectEntry = {
+    name: string;
+    dateRange?: string;
+    bullets: string[];
+};
+
+/**
+ * Prepends a new project to a profile's project list (most recent first,
+ * matching the convention set by resume parsing).
+ * @param profile_ID the profile to update
+ * @param entry the new project entry
+ */
+export async function addProject(profile_ID: number, entry: ProjectEntry) {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { projects: true },
+    });
+
+    const existing = Array.isArray(current?.projects) ? current.projects : [];
+    const updated = [entry, ...existing];
+
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { projects: updated as unknown as Prisma.InputJsonValue },
+    });
+}
+
+/**
+ * Removes a project from a profile's project list by name (case-insensitive).
+ * @param profile_ID the profile to update
+ * @param projectName the name of the project to remove
+ * @returns whether a matching project was actually found and removed
+ */
+export async function removeProject(profile_ID: number, projectName: string): Promise<boolean> {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { projects: true },
+    });
+
+    const existing = Array.isArray(current?.projects) ? current.projects : [];
+    const query = projectName.trim().toLowerCase();
+
+    const remaining = existing.filter((entry) => {
+        const name = (entry as { name?: unknown })?.name;
+        return typeof name !== 'string' || name.toLowerCase() !== query;
+    });
+
+    if (remaining.length === existing.length) {
+        return false;
+    }
+
+    await prisma.profile.update({
+        where: { profile_ID },
+        data: { projects: remaining as unknown as Prisma.InputJsonValue },
+    });
+
+    return true;
 }
 
 export type EducationEntry = {
@@ -236,6 +297,76 @@ export function extractResumeSummary(profexperience: unknown): {
         .slice(0, 3);
 
     return { currentRole, experienceHighlights };
+}
+
+type ResumeProjectEntry = {
+    name?: unknown;
+    dateRange?: unknown;
+    bullets?: unknown;
+};
+
+/**
+ * Parses a profile's `projects` JSON blob (from resume parsing) into a
+ * typed array, discarding anything malformed rather than throwing.
+ */
+export function extractProjects(projects: unknown): {
+    name: string;
+    dateRange?: string;
+    bullets: string[];
+}[] {
+    const entries = Array.isArray(projects) ? (projects as ResumeProjectEntry[]) : [];
+
+    return entries.flatMap((entry) => {
+        if (typeof entry.name !== 'string') return [];
+
+        return [{
+            name: entry.name,
+            dateRange: typeof entry.dateRange === 'string' ? entry.dateRange : undefined,
+            bullets: Array.isArray(entry.bullets)
+                ? entry.bullets.filter((bullet): bullet is string => typeof bullet === 'string')
+                : [],
+        }];
+    });
+}
+
+/**
+ * Builds the ProfileContext shape rateSkillProficiencies expects, from a raw
+ * profile row (plus its linked resume's raw text, when available). Shared by
+ * the skill-ratings route and the agent's get_skill_proficiency tool so both
+ * feed the AI rater identically-shaped evidence.
+ */
+export async function buildSkillProficiencyContext(profile: {
+    skills: string | null;
+    highestDegree: string | null;
+    yearofexperience: number | null;
+    profexperience: unknown;
+    educationhistory: unknown;
+    projects: unknown;
+    resumeid: number | null;
+}): Promise<ProfileContext> {
+    const experiences = Array.isArray(profile.profexperience)
+        ? (profile.profexperience as ProfileContext['experiences'])
+        : [];
+
+    const educationHistory = Array.isArray(profile.educationhistory)
+        ? (profile.educationhistory as ProfileContext['educationHistory'])
+        : [];
+
+    const projects = extractProjects(profile.projects);
+
+    const resume = profile.resumeid ? await resumes.getResumeById(profile.resumeid) : null;
+
+    return {
+        skills: profile.skills
+            ? profile.skills.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+        highestDegree: profile.highestDegree || null,
+        yearsOfExperience: profile.yearofexperience,
+        experiences,
+        educationHistory,
+        projects,
+        rawResumeText: resume?.rawtext ?? null,
+    };
 }
 
 export async function getSkillsByProfile(profile_ID: number) {

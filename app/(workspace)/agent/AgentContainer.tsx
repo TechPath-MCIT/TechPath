@@ -19,8 +19,11 @@ type ConversationApiItem = {
 type ConversationsApiResponse = {
   success: boolean;
   data?: ConversationApiItem[];
+  hasMore?: boolean;
   error?: string;
 };
+
+const CONVERSATIONS_PAGE_SIZE = 20;
 
 type AgentApiResponse = {
   success: boolean;
@@ -69,6 +72,8 @@ export default function AgentContainer() {
   const router = useRouter();
 
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string>("new");
   const [messages, setMessages] = useState<AgentMessage[]>([GREETING]);
   const [inputValue, setInputValue] = useState("");
@@ -77,6 +82,13 @@ export default function AgentContainer() {
 
   const conversationIdRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastAttemptRef = useRef<{
+    trimmed: string;
+    userMessage: AgentMessage;
+    priorMessages: AgentMessage[];
+    wasNewConversation: boolean;
+    history: { role: "assistant" | "user"; content: string }[];
+  } | null>(null);
 
   const SEND_TIMEOUT_MS = 30000;
 
@@ -86,7 +98,7 @@ export default function AgentContainer() {
     async function loadConversations() {
       try {
         const response = await fetch(
-          `/api/profiles/${profile.profileId}/conversations?n=20`,
+          `/api/profiles/${profile.profileId}/conversations?n=${CONVERSATIONS_PAGE_SIZE}`,
           { signal: controller.signal, cache: "no-store" },
         );
         const body = (await response.json()) as ConversationsApiResponse;
@@ -96,6 +108,7 @@ export default function AgentContainer() {
         }
 
         setConversations((body.data ?? []).map(toSummary));
+        setHasMoreConversations(body.hasMore ?? false);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         // Sidebar history is a nice-to-have; a load failure shouldn't block chatting.
@@ -126,29 +139,39 @@ export default function AgentContainer() {
     [conversations],
   );
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed || isSending) return;
+  const handleLoadMoreConversations = useCallback(async () => {
+    if (isLoadingMoreConversations) return;
 
-    const priorMessages = messages;
-    const wasNewConversation = conversationIdRef.current === null;
+    setIsLoadingMoreConversations(true);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profile.profileId}/conversations?n=${CONVERSATIONS_PAGE_SIZE}&skip=${conversations.length}`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ConversationsApiResponse;
 
-    const userMessage: AgentMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: trimmed,
-      timestamp: new Date(),
-    };
+      if (!response.ok || !body.success) {
+        return;
+      }
 
-    const history = priorMessages
-      .filter((m) => m.id !== "greeting")
-      .map((m) => ({
-        role: (m.role === "agent" ? "assistant" : "user") as "assistant" | "user",
-        content: m.content,
-      }));
+      const nextPage = (body.data ?? []).map(toSummary);
+      setConversations((prev) => [
+        ...prev,
+        ...nextPage.filter((c) => !prev.some((existing) => existing.id === c.id)),
+      ]);
+      setHasMoreConversations(body.hasMore ?? false);
+    } finally {
+      setIsLoadingMoreConversations(false);
+    }
+  }, [conversations.length, isLoadingMoreConversations, profile.profileId]);
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
+  const performSend = useCallback(async (
+    trimmed: string,
+    userMessage: AgentMessage,
+    priorMessages: AgentMessage[],
+    wasNewConversation: boolean,
+    history: { role: "assistant" | "user"; content: string }[],
+  ) => {
     setIsSending(true);
     setError(null);
 
@@ -335,7 +358,41 @@ export default function AgentContainer() {
       abortControllerRef.current = null;
       setIsSending(false);
     }
-  }, [conversations, inputValue, isSending, messages, profile.profileId, router]);
+  }, [conversations, profile.profileId, router]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isSending) return;
+
+    const priorMessages = messages;
+    const wasNewConversation = conversationIdRef.current === null;
+
+    const userMessage: AgentMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: trimmed,
+      timestamp: new Date(),
+    };
+
+    const history = priorMessages
+      .filter((m) => m.id !== "greeting")
+      .map((m) => ({
+        role: (m.role === "agent" ? "assistant" : "user") as "assistant" | "user",
+        content: m.content,
+      }));
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+
+    lastAttemptRef.current = { trimmed, userMessage, priorMessages, wasNewConversation, history };
+    await performSend(trimmed, userMessage, priorMessages, wasNewConversation, history);
+  }, [inputValue, isSending, messages, performSend]);
+
+  const handleRetry = useCallback(async () => {
+    if (!lastAttemptRef.current || isSending) return;
+    const { trimmed, userMessage, priorMessages, wasNewConversation, history } = lastAttemptRef.current;
+    await performSend(trimmed, userMessage, priorMessages, wasNewConversation, history);
+  }, [isSending, performSend]);
 
   const handleCancelSend = useCallback(() => {
     abortControllerRef.current?.abort("cancelled");
@@ -377,6 +434,10 @@ export default function AgentContainer() {
         onDeleteConversation={handleDeleteConversation}
         isSending={isSending}
         errorMessage={error}
+        onRetry={handleRetry}
+        hasMoreConversations={hasMoreConversations}
+        isLoadingMoreConversations={isLoadingMoreConversations}
+        onLoadMoreConversations={handleLoadMoreConversations}
       />
     </div>
   );

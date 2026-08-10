@@ -173,6 +173,11 @@ export default function LandscapeContainer({
     }
 
     profile.setTargetRole(targetRole);
+
+    // Matches the original design: after picking/changing a target role,
+    // jump straight into the Agent so the user can immediately dig into
+    // skill gaps and next steps for it.
+    router.push("/agent");
   }
 
   async function saveLocation(location: string): Promise<void> {

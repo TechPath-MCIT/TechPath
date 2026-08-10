@@ -8,10 +8,17 @@ import * as skills from '@/services/skills';
 import * as roles from '@/services/roles';
 import * as resourcesSvc from '@/services/resources';
 import * as match from '@/services/match';
+import * as jobsSvc from '@/services/jobs';
+import * as skillRatings from '@/services/skillRatings';
+import { rateSkillProficiencies } from '@/app/actions/skillProficiency';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 });
+
+// resource_status.status_id convention — matches GrindPage.tsx.
+const IN_PROGRESS_STATUS_ID = 1;
+const COMPLETED_STATUS_ID = 2;
 
 export interface AgentAvailableRole {
   roleId: number;
@@ -61,8 +68,11 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, add_project, remove_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
+    "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
+    "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
+    "Use get_skill_proficiency when the user asks how strong, how good, or how ready they are on a role's skills — it's a deeper, AI-rated 1-10 score with a rationale per skill, versus get_skill_gaps' plain have/missing split. Mention the rationale when it adds useful context, and be upfront that these scores are AI estimates based on their resume, not a certified assessment.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
@@ -225,6 +235,80 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
       execute: async ({ company, title, years, bullets }) => {
         await profiles.addWorkExperience(profileId, { company, title, years, bullets });
         return { success: true, company, title };
+      },
+    }),
+    add_project: tool({
+      description:
+        "Add a new project to the user's profile — e.g. when they mention something they built or worked on outside a job. Only call this when the user explicitly describes a project they want added.",
+      inputSchema: z.object({
+        name: z.string().describe('Project name.'),
+        dateRange: z.string().optional().describe('Date range, e.g. "2025 - 2026", if mentioned.'),
+        bullets: z.array(z.string()).describe('Key details, technologies used, or accomplishments for this project.'),
+      }),
+      execute: async ({ name, dateRange, bullets }) => {
+        await profiles.addProject(profileId, { name, dateRange, bullets });
+        return { success: true, name };
+      },
+    }),
+    remove_project: tool({
+      description:
+        "Remove a project from the user's profile by name. Only call this when the user explicitly asks to remove or delete a specific project.",
+      inputSchema: z.object({
+        name: z.string().describe('The name of the project to remove, matched case-insensitively.'),
+      }),
+      execute: async ({ name }) => {
+        const removed = await profiles.removeProject(profileId, name);
+        if (!removed) {
+          return { success: false, error: `No project named "${name}" found on the profile.` };
+        }
+        return { success: true, name };
+      },
+    }),
+    mark_course_status: tool({
+      description:
+        "Mark an MCIT course as in progress or completed for the user. Only call this when the user explicitly says they've started or finished a specific course by name. Completing a course also adds the skills it teaches to the user's profile.",
+      inputSchema: z.object({
+        courseName: z
+          .string()
+          .describe('The course name or code the user mentioned, e.g. "Networked Systems" or "CIS5530".'),
+        status: z
+          .enum(['in_progress', 'complete'])
+          .describe('Whether the user started the course or finished it.'),
+      }),
+      execute: async ({ courseName, status }) => {
+        const allCourses = await resourcesSvc.getResources({ type: 'course', limit: 200 });
+        const query = courseName.trim().toLowerCase();
+        const matches = allCourses.filter(
+          (resource) =>
+            resource.name.toLowerCase().includes(query) ||
+            (resource.course?.courseId.toLowerCase().includes(query) ?? false),
+        );
+
+        if (matches.length === 0) {
+          return { success: false, error: `No MCIT course found matching "${courseName}".` };
+        }
+
+        if (matches.length > 1) {
+          return {
+            success: false,
+            error: `Multiple courses match "${courseName}" — ask the user to be more specific.`,
+            candidates: matches.slice(0, 5).map((resource) => resource.name),
+          };
+        }
+
+        const course = matches[0];
+
+        if (status === 'complete') {
+          const { addedSkills } = await profiles.completeResourceForProfile(
+            profileId,
+            course.id,
+            COMPLETED_STATUS_ID,
+          );
+          return { success: true, courseName: course.name, status: 'complete', addedSkills };
+        }
+
+        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID);
+        return { success: true, courseName: course.name, status: 'in_progress' };
       },
     }),
     update_education: tool({
@@ -414,6 +498,167 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         };
       },
     }),
+    find_live_job_postings: tool({
+      description:
+        "Search for real, currently open job postings matching a query. Use this when the user asks what's actually hiring right now, wants to see real job listings, or asks about current openings for a role — not for general role information, which get_role_details already covers. Each result includes an applyUrl and a source (the site the listing came from) — always include both for every job you list in your reply (as a markdown link and its source), don't just name the job and company. These listings can go stale between when they were indexed and when the user clicks — after listing the jobs, briefly note that some postings may have already been filled or taken down, and suggest checking the company's careers page directly if a link doesn't work.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe('The job search query, e.g. "software engineer in Chicago" or "data scientist remote".'),
+      }),
+      execute: async ({ query }) => {
+        try {
+          const jobs = await jobsSvc.searchLiveJobs(query, 10);
+          return { success: true, jobs };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to search live job postings.',
+          };
+        }
+      },
+    }),
+    get_skill_proficiency: tool({
+      description:
+        "Get an AI-estimated 1-10 proficiency score, with a one-sentence rationale grounded in the resume, for each of a role's top skills — deeper than get_skill_gaps' plain have/missing split. Use this when the user asks how strong, how good, or how ready they are on a role's skills, not just whether they're missing entirely. Results are cached per profile+role+skill, so repeat calls for the same role are free; only newly-seen skills trigger a rating pass.",
+      inputSchema: z.object({
+        roleId: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "The numeric id of the role whose top skills to rate, from the available roles list. Defaults to the target role already on the profile if omitted.",
+          ),
+      }),
+      execute: async ({ roleId }) => {
+        let resolvedRoleId = roleId;
+        const profile = await profiles.getProfileById(profileId);
+        if (resolvedRoleId == null) {
+          resolvedRoleId = profile?.roleId ?? undefined;
+        }
+        if (resolvedRoleId == null) {
+          return { success: false, error: 'No role was specified and the user has not set a target role yet.' };
+        }
+        if (!profile) {
+          return { success: false, error: 'Profile not found.' };
+        }
+
+        const role = availableRoles.find((candidate) => candidate.roleId === resolvedRoleId);
+        if (!role) {
+          return { success: false, error: `${resolvedRoleId} is not a valid role id.` };
+        }
+
+        const topSkills = await roles.getRoleTopSkillsBalanced(resolvedRoleId, 2);
+        const ratedSkills = topSkills.filter(
+          (skill): skill is typeof skill & { name: string } => typeof skill.name === 'string',
+        );
+
+        const cached = await skillRatings.getCachedRatings(profileId, resolvedRoleId);
+        const cachedBySkillId = new Map(cached.map((row) => [row.skillId, row]));
+        const missing = ratedSkills.filter((skill) => !cachedBySkillId.has(skill.skillId));
+
+        if (missing.length > 0) {
+          const profileContext = await profiles.buildSkillProficiencyContext(profile);
+          const newRatings = await rateSkillProficiencies(
+            profileContext,
+            missing.map((skill) => ({ skillId: skill.skillId, name: skill.name })),
+          );
+          await skillRatings.upsertRatings(profileId, resolvedRoleId, newRatings);
+          for (const rating of newRatings) {
+            cachedBySkillId.set(rating.skillId, {
+              id: 0,
+              profileId,
+              roleId: resolvedRoleId,
+              skillId: rating.skillId,
+              proficiency: rating.proficiency,
+              rationale: rating.rationale,
+              updatedAt: new Date(),
+            });
+          }
+        }
+
+        return {
+          success: true,
+          roleName: role.name,
+          ratings: ratedSkills.map((skill) => {
+            const rating = cachedBySkillId.get(skill.skillId);
+            return {
+              skillName: skill.name,
+              proficiency: rating?.proficiency ?? null,
+              rationale: rating?.rationale ?? null,
+            };
+          }),
+        };
+      },
+    }),
+    generate_career_plan: tool({
+      description:
+        "Generate one full career plan report for a role, combining everything else this agent can look up: skill gap analysis, recommended courses for each missing skill, role details (salary, outlook, responsibilities), and real current job openings for that role. Use this when the user asks for a career plan, roadmap, or wants everything summarized together — not for narrower single-topic questions, which the more specific tools (get_skill_gaps, get_role_details, recommend_courses_for_role, find_live_job_postings) already answer more directly. This calls the live job search API as part of the report, so don't call it repeatedly in the same conversation without the user asking again.",
+      inputSchema: z.object({
+        roleId: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'The numeric id of the role to build the plan for, from the available roles list. Defaults to the target role already on the profile if omitted.',
+          ),
+      }),
+      execute: async ({ roleId }) => {
+        let resolvedRoleId = roleId;
+        if (resolvedRoleId == null) {
+          const profile = await profiles.getProfileById(profileId);
+          resolvedRoleId = profile?.roleId ?? undefined;
+        }
+        if (resolvedRoleId == null) {
+          return { success: false, error: 'No role was specified and the user has not set a target role yet.' };
+        }
+
+        const role = availableRoles.find((candidate) => candidate.roleId === resolvedRoleId);
+        if (!role) {
+          return { success: false, error: `${resolvedRoleId} is not a valid role id.` };
+        }
+
+        const [roleSkills, profileLinks, allResources, roleDetails, matchScores, liveJobs] = await Promise.all([
+          roles.getRoleSkills(resolvedRoleId),
+          profiles.getSkillsByProfile(profileId),
+          resourcesSvc.getResources({ limit: 200 }),
+          roles.getRoleDetails(resolvedRoleId),
+          match.getRoleMatchScores(profileId),
+          jobsSvc.searchLiveJobs(role.name, 5).catch(() => null),
+        ]);
+
+        const linkedSkillIds = new Set(profileLinks.map((link) => link.skillId));
+        const topRoleSkills = roleSkills.slice(0, 10);
+        const haveSkills = topRoleSkills.filter((skill) => linkedSkillIds.has(skill.skillId));
+        const missingSkills = topRoleSkills.filter((skill) => !linkedSkillIds.has(skill.skillId));
+
+        const recommendations = missingSkills.map((skill) => {
+          const matchingCourses = allResources
+            .filter((resource) => resource.skills.some((entry) => entry.skillId === skill.skillId))
+            .sort((a, b) => {
+              const weightA = a.skills.find((entry) => entry.skillId === skill.skillId)?.coverageWeight ?? 0;
+              const weightB = b.skills.find((entry) => entry.skillId === skill.skillId)?.coverageWeight ?? 0;
+              return weightB - weightA;
+            })
+            .slice(0, 3)
+            .map((resource) => ({ name: resource.name, url: resource.url, pricing: resource.pricing.type }));
+
+          return { skillName: skill.name, courses: matchingCourses };
+        });
+
+        return {
+          success: true,
+          roleName: role.name,
+          matchScore: matchScores.find((entry) => entry.roleId === resolvedRoleId)?.score ?? null,
+          roleDetails: roleDetails ?? null,
+          have: haveSkills.map((skill) => skill.name),
+          missing: missingSkills.map((skill) => skill.name),
+          recommendations,
+          liveJobs: liveJobs ?? [],
+          liveJobsUnavailable: liveJobs === null,
+        };
+      },
+    }),
   };
 }
 
@@ -430,6 +675,9 @@ const MUTATION_TOOL_NAMES = new Set([
   'set_years_of_experience',
   'update_education',
   'add_work_experience',
+  'add_project',
+  'remove_project',
+  'mark_course_status',
 ]);
 
 /**

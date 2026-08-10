@@ -2,71 +2,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import * as profiles from '@/services/profiles';
 import * as roles from '@/services/roles';
-import * as resumes from '@/services/resumes';
 import * as skillRatings from '@/services/skillRatings';
-import { rateSkillProficiencies, type ProfileContext } from '@/app/actions/skillProficiency';
+import { rateSkillProficiencies } from '@/app/actions/skillProficiency';
 
 interface RouteContext {
     params: Promise<{ id: string; roleId: string }>;
 }
 
 const SKILLS_PER_CATEGORY = 2;
-
-type ProfileExperience = {
-    company: string;
-    title: string;
-    years: number;
-    bullets: string[];
-};
-
-type ProfileEducationEntry = {
-    school: string;
-    degree: string;
-    dateRange: string;
-    gpa?: string;
-};
-
-type ProfileProjectEntry = {
-    name: string;
-    dateRange?: string;
-    bullets: string[];
-};
-
-async function toProfileContext(profile: {
-    skills: string | null;
-    highestDegree: string;
-    yearofexperience: number | null;
-    profexperience: unknown;
-    educationhistory: unknown;
-    projects: unknown;
-    resumeid: number | null;
-}): Promise<ProfileContext> {
-    const experiences = Array.isArray(profile.profexperience)
-        ? (profile.profexperience as ProfileExperience[])
-        : [];
-
-    const educationHistory = Array.isArray(profile.educationhistory)
-        ? (profile.educationhistory as ProfileEducationEntry[])
-        : [];
-
-    const projects = Array.isArray(profile.projects)
-        ? (profile.projects as ProfileProjectEntry[])
-        : [];
-
-    const resume = profile.resumeid ? await resumes.getResumeById(profile.resumeid) : null;
-
-    return {
-        skills: profile.skills
-            ? profile.skills.split(',').map((s) => s.trim()).filter(Boolean)
-            : [],
-        highestDegree: profile.highestDegree || null,
-        yearsOfExperience: profile.yearofexperience,
-        experiences,
-        educationHistory,
-        projects,
-        rawResumeText: resume?.rawtext ?? null,
-    };
-}
 
 /**
  * @swagger
@@ -130,7 +73,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         const missing = ratedSkills.filter((skill) => !cachedBySkillId.has(skill.skillId));
 
         if (missing.length > 0) {
-            const profileContext = await toProfileContext(profile);
+            const profileContext = await profiles.buildSkillProficiencyContext(profile);
             const newRatings = await rateSkillProficiencies(
                 profileContext,
                 missing.map((skill) => ({ skillId: skill.skillId, name: skill.name })),
