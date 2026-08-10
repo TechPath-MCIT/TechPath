@@ -130,6 +130,38 @@ export async function addProject(profile_ID: number, entry: ProjectEntry) {
     });
 }
 
+/**
+ * Removes a project from a profile's project list by name (case-insensitive).
+ * @param profile_ID the profile to update
+ * @param projectName the name of the project to remove
+ * @returns whether a matching project was actually found and removed
+ */
+export async function removeProject(profile_ID: number, projectName: string): Promise<boolean> {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { projects: true },
+    });
+
+    const existing = Array.isArray(current?.projects) ? current.projects : [];
+    const query = projectName.trim().toLowerCase();
+
+    const remaining = existing.filter((entry) => {
+        const name = (entry as { name?: unknown })?.name;
+        return typeof name !== 'string' || name.toLowerCase() !== query;
+    });
+
+    if (remaining.length === existing.length) {
+        return false;
+    }
+
+    await prisma.profile.update({
+        where: { profile_ID },
+        data: { projects: remaining as unknown as Prisma.InputJsonValue },
+    });
+
+    return true;
+}
+
 export type EducationEntry = {
     school: string;
     degree: string;
