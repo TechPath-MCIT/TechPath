@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Square } from 'lucide-react';
+import { Send, Plus, MessageSquare, ChevronLeft, ChevronRight, Trash2, Square, Search, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 
@@ -49,7 +49,18 @@ export function AgentChat({
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [conversationSearch, setConversationSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const filteredConversations = conversationSearch.trim()
+    ? conversations.filter((conversation) => {
+        const query = conversationSearch.trim().toLowerCase();
+        return (
+          conversation.title.toLowerCase().includes(query) ||
+          conversation.lastMessage.toLowerCase().includes(query)
+        );
+      })
+    : conversations;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -78,11 +89,37 @@ export function AgentChat({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
+          <div className="relative mb-3">
+            <Search
+              className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: '#55371e' }}
+            />
+            <input
+              type="text"
+              value={conversationSearch}
+              onChange={(e) => setConversationSearch(e.target.value)}
+              placeholder="Search conversations…"
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg text-xs border outline-none"
+              style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+            />
+            {conversationSearch && (
+              <button
+                onClick={() => setConversationSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+                title="Clear search"
+              >
+                <X className="w-3 h-3" style={{ color: '#55371e' }} />
+              </button>
+            )}
+          </div>
           <h3 className="text-xs font-semibold mb-3 px-2" style={{ color: '#55371e' }}>
             RECENT
           </h3>
           <div className="space-y-2">
-            {conversations.map((conversation) => (
+            {filteredConversations.length === 0 && (
+              <p className="text-xs px-2" style={{ color: '#55371e' }}>No conversations found.</p>
+            )}
+            {filteredConversations.map((conversation) => (
               <div key={conversation.id} className="relative group">
                 <button
                   onClick={() => onSelectConversation(conversation.id)}
