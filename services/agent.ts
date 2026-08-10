@@ -504,7 +504,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
       }),
       execute: async ({ query }) => {
         try {
-          const jobs = await jobsSvc.searchLiveJobs(query, 5);
+          const jobs = await jobsSvc.searchLiveJobs(query, 10);
           return { success: true, jobs };
         } catch (error) {
           return {
