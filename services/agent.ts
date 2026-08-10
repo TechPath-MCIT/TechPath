@@ -13,6 +13,10 @@ const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 });
 
+// resource_status.status_id convention — matches GrindPage.tsx.
+const IN_PROGRESS_STATUS_ID = 1;
+const COMPLETED_STATUS_ID = 2;
+
 export interface AgentAvailableRole {
   roleId: number;
   name: string;
@@ -61,7 +65,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, and add_work_experience tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, add_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
@@ -225,6 +229,66 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
       execute: async ({ company, title, years, bullets }) => {
         await profiles.addWorkExperience(profileId, { company, title, years, bullets });
         return { success: true, company, title };
+      },
+    }),
+    add_project: tool({
+      description:
+        "Add a new project to the user's profile — e.g. when they mention something they built or worked on outside a job. Only call this when the user explicitly describes a project they want added.",
+      inputSchema: z.object({
+        name: z.string().describe('Project name.'),
+        dateRange: z.string().optional().describe('Date range, e.g. "2025 - 2026", if mentioned.'),
+        bullets: z.array(z.string()).describe('Key details, technologies used, or accomplishments for this project.'),
+      }),
+      execute: async ({ name, dateRange, bullets }) => {
+        await profiles.addProject(profileId, { name, dateRange, bullets });
+        return { success: true, name };
+      },
+    }),
+    mark_course_status: tool({
+      description:
+        "Mark an MCIT course as in progress or completed for the user. Only call this when the user explicitly says they've started or finished a specific course by name. Completing a course also adds the skills it teaches to the user's profile.",
+      inputSchema: z.object({
+        courseName: z
+          .string()
+          .describe('The course name or code the user mentioned, e.g. "Networked Systems" or "CIS5530".'),
+        status: z
+          .enum(['in_progress', 'complete'])
+          .describe('Whether the user started the course or finished it.'),
+      }),
+      execute: async ({ courseName, status }) => {
+        const allCourses = await resourcesSvc.getResources({ type: 'course', limit: 200 });
+        const query = courseName.trim().toLowerCase();
+        const matches = allCourses.filter(
+          (resource) =>
+            resource.name.toLowerCase().includes(query) ||
+            (resource.course?.courseId.toLowerCase().includes(query) ?? false),
+        );
+
+        if (matches.length === 0) {
+          return { success: false, error: `No MCIT course found matching "${courseName}".` };
+        }
+
+        if (matches.length > 1) {
+          return {
+            success: false,
+            error: `Multiple courses match "${courseName}" — ask the user to be more specific.`,
+            candidates: matches.slice(0, 5).map((resource) => resource.name),
+          };
+        }
+
+        const course = matches[0];
+
+        if (status === 'complete') {
+          const { addedSkills } = await profiles.completeResourceForProfile(
+            profileId,
+            course.id,
+            COMPLETED_STATUS_ID,
+          );
+          return { success: true, courseName: course.name, status: 'complete', addedSkills };
+        }
+
+        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID);
+        return { success: true, courseName: course.name, status: 'in_progress' };
       },
     }),
     update_education: tool({
@@ -430,6 +494,8 @@ const MUTATION_TOOL_NAMES = new Set([
   'set_years_of_experience',
   'update_education',
   'add_work_experience',
+  'add_project',
+  'mark_course_status',
 ]);
 
 /**

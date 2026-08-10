@@ -103,6 +103,33 @@ export async function addWorkExperience(profile_ID: number, entry: WorkExperienc
     });
 }
 
+export type ProjectEntry = {
+    name: string;
+    dateRange?: string;
+    bullets: string[];
+};
+
+/**
+ * Prepends a new project to a profile's project list (most recent first,
+ * matching the convention set by resume parsing).
+ * @param profile_ID the profile to update
+ * @param entry the new project entry
+ */
+export async function addProject(profile_ID: number, entry: ProjectEntry) {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { projects: true },
+    });
+
+    const existing = Array.isArray(current?.projects) ? current.projects : [];
+    const updated = [entry, ...existing];
+
+    return prisma.profile.update({
+        where: { profile_ID },
+        data: { projects: updated as unknown as Prisma.InputJsonValue },
+    });
+}
+
 export type EducationEntry = {
     school: string;
     degree: string;
