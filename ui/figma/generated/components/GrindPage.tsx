@@ -555,6 +555,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       setAgentInputText('');
 
       if (profileUpdated) {
+        // Refresh the shared profile data (skills, experience, projects) and
+        // this page's own resource pairings (course status badges, Ongoing
+        // tab) — the agent may have changed either via mark_course_status,
+        // add_skills, etc.
+        await loadProfileResources();
         router.refresh();
       }
     } catch (error) {
