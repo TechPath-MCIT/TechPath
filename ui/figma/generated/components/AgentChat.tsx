@@ -348,7 +348,7 @@ export function AgentChat({
             )}
           </div>
           <p className="text-xs mt-2 text-center" style={{ color: '#55371e' }}>
-            Try: "Help me learn Python" • "I finished the Networked Systems course" • "What's the salary for ML engineers?"
+            Try: "Give me a full career plan" • "What jobs are hiring right now?" • "How strong am I on the skills I need?"
           </p>
         </div>
       </div>
