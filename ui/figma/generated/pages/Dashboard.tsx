@@ -259,6 +259,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           targetRole={userData.targetRole?.target ?? ""}
           skills={userData.skills}
           experience={userData.experience}
+          projects={[]}
           resources={[]}
           isLoadingResources={false}
           resourcesError={null}

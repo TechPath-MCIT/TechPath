@@ -13,6 +13,12 @@ export type TargetRole = {
   name: string;
 };
 
+export type WorkspaceProject = {
+  name: string;
+  dateRange?: string;
+  bullets: string[];
+};
+
 export type WorkspaceProfile = {
   profileId: number;
   name: string;
@@ -22,6 +28,7 @@ export type WorkspaceProfile = {
   skills: string[];
   yearsOfExperience: number;
   experience: string[];
+  projects: WorkspaceProject[];
   targetRole: TargetRole | null;
 };
 

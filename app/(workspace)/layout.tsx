@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import * as users from "@/services/users";
-import { extractResumeSummary, getProfileById } from "@/services/profiles";
+import { extractProjects, extractResumeSummary, getProfileById } from "@/services/profiles";
 import { getRoleById } from "@/services/roles";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import {
@@ -57,6 +57,7 @@ export default async function WorkspaceLayout({
       : [],
     yearsOfExperience: profile.yearofexperience ?? 0,
     experience: experienceHighlights,
+    projects: extractProjects(profile.projects),
     targetRole: dreamRole?.role
       ? {
           roleId: dreamRole.roleId,

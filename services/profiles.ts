@@ -238,6 +238,36 @@ export function extractResumeSummary(profexperience: unknown): {
     return { currentRole, experienceHighlights };
 }
 
+type ResumeProjectEntry = {
+    name?: unknown;
+    dateRange?: unknown;
+    bullets?: unknown;
+};
+
+/**
+ * Parses a profile's `projects` JSON blob (from resume parsing) into a
+ * typed array, discarding anything malformed rather than throwing.
+ */
+export function extractProjects(projects: unknown): {
+    name: string;
+    dateRange?: string;
+    bullets: string[];
+}[] {
+    const entries = Array.isArray(projects) ? (projects as ResumeProjectEntry[]) : [];
+
+    return entries.flatMap((entry) => {
+        if (typeof entry.name !== 'string') return [];
+
+        return [{
+            name: entry.name,
+            dateRange: typeof entry.dateRange === 'string' ? entry.dateRange : undefined,
+            bullets: Array.isArray(entry.bullets)
+                ? entry.bullets.filter((bullet): bullet is string => typeof bullet === 'string')
+                : [],
+        }];
+    });
+}
+
 export async function getSkillsByProfile(profile_ID: number) {
 
     return prisma.profile_Skills.findMany({

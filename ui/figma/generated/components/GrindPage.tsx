@@ -118,11 +118,18 @@ interface VideoApiResponse {
   data?: string;
 }
 
+interface GrindProject {
+  name: string;
+  dateRange?: string;
+  bullets: string[];
+}
+
 interface GrindPageProps {
   profileId: number;
   targetRole: string;
   skills: string[];
   experience: string[];
+  projects: GrindProject[];
   resources: ResourceApiItem[];
   isLoadingResources: boolean;
   resourcesError: string | null;
@@ -157,7 +164,7 @@ function ResourceSkillBadges({ resource, className }: { resource: ProfileResourc
   );
 }
 
-export function GrindPage({ profileId, targetRole, skills, experience, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
+export function GrindPage({ profileId, targetRole, skills, experience, projects, resources, isLoadingResources, resourcesError, }: GrindPageProps) {
   const router = useRouter();
 
   // Each retrieved YouTube video for a target-role skill.
@@ -1409,33 +1416,44 @@ export function GrindPage({ profileId, targetRole, skills, experience, resources
           {/* Projects Tab */}
           {profileSection === 'projects' && (
             <div className="space-y-3">
-              {userProfile.resume.projects.map((project, idx) => {
-                const key = `proj-${idx}`;
-                const isOpen = expandedItem === key;
-                return (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-lg transition-all cursor-pointer"
-                    style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
-                    onClick={() => setExpandedItem(isOpen ? null : key)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium" style={{ color: '#15100c' }}>{project.name}</div>
-                      <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                    </div>
-                    {isOpen && (
-                      <div className="mt-3 border-t pt-3 space-y-2" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
-                        <p className="text-sm" style={{ color: '#55371e' }}>{project.description}</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {project.skills.map((s, sidx) => (
-                            <span key={sidx} className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: 'rgba(253,211,87,0.2)', color: '#15100c' }}>{s}</span>
-                          ))}
+              {projects.length === 0 ? (
+                <p className="text-xs" style={{ color: '#55371e' }}>No projects yet.</p>
+              ) : (
+                projects.map((project, idx) => {
+                  const key = `proj-${idx}`;
+                  const isOpen = expandedItem === key;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-lg transition-all cursor-pointer"
+                      style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.08)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
+                      onClick={() => setExpandedItem(isOpen ? null : key)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium" style={{ color: '#15100c' }}>{project.name}</div>
+                          {project.dateRange && (
+                            <div className="text-xs" style={{ color: '#55371e' }}>{project.dateRange}</div>
+                          )}
                         </div>
+                        {project.bullets.length > 0 && (
+                          <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {isOpen && project.bullets.length > 0 && (
+                        <ul className="mt-3 space-y-1 border-t pt-3" style={{ borderColor: 'rgba(2,116,111,0.12)' }}>
+                          {project.bullets.map((bullet, bidx) => (
+                            <li key={bidx} className="flex gap-2 text-sm" style={{ color: '#55371e' }}>
+                              <span style={{ color: '#02746f' }}>•</span>
+                              <span>{bullet}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 
