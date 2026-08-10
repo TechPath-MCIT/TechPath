@@ -19,8 +19,11 @@ type ConversationApiItem = {
 type ConversationsApiResponse = {
   success: boolean;
   data?: ConversationApiItem[];
+  hasMore?: boolean;
   error?: string;
 };
+
+const CONVERSATIONS_PAGE_SIZE = 20;
 
 type AgentApiResponse = {
   success: boolean;
@@ -69,6 +72,8 @@ export default function AgentContainer() {
   const router = useRouter();
 
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string>("new");
   const [messages, setMessages] = useState<AgentMessage[]>([GREETING]);
   const [inputValue, setInputValue] = useState("");
@@ -93,7 +98,7 @@ export default function AgentContainer() {
     async function loadConversations() {
       try {
         const response = await fetch(
-          `/api/profiles/${profile.profileId}/conversations?n=20`,
+          `/api/profiles/${profile.profileId}/conversations?n=${CONVERSATIONS_PAGE_SIZE}`,
           { signal: controller.signal, cache: "no-store" },
         );
         const body = (await response.json()) as ConversationsApiResponse;
@@ -103,6 +108,7 @@ export default function AgentContainer() {
         }
 
         setConversations((body.data ?? []).map(toSummary));
+        setHasMoreConversations(body.hasMore ?? false);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         // Sidebar history is a nice-to-have; a load failure shouldn't block chatting.
@@ -132,6 +138,32 @@ export default function AgentContainer() {
     },
     [conversations],
   );
+
+  const handleLoadMoreConversations = useCallback(async () => {
+    if (isLoadingMoreConversations) return;
+
+    setIsLoadingMoreConversations(true);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profile.profileId}/conversations?n=${CONVERSATIONS_PAGE_SIZE}&skip=${conversations.length}`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ConversationsApiResponse;
+
+      if (!response.ok || !body.success) {
+        return;
+      }
+
+      const nextPage = (body.data ?? []).map(toSummary);
+      setConversations((prev) => [
+        ...prev,
+        ...nextPage.filter((c) => !prev.some((existing) => existing.id === c.id)),
+      ]);
+      setHasMoreConversations(body.hasMore ?? false);
+    } finally {
+      setIsLoadingMoreConversations(false);
+    }
+  }, [conversations.length, isLoadingMoreConversations, profile.profileId]);
 
   const performSend = useCallback(async (
     trimmed: string,
@@ -403,6 +435,9 @@ export default function AgentContainer() {
         isSending={isSending}
         errorMessage={error}
         onRetry={handleRetry}
+        hasMoreConversations={hasMoreConversations}
+        isLoadingMoreConversations={isLoadingMoreConversations}
+        onLoadMoreConversations={handleLoadMoreConversations}
       />
     </div>
   );

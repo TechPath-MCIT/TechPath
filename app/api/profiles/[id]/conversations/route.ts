@@ -30,11 +30,17 @@ interface RouteContext {
  *          description: how many of the most recent conversations to return (1-50)
  *          schema:
  *              type: integer
+ *        - name: skip
+ *          in: query
+ *          required: false
+ *          description: how many of the most recent conversations to skip, for pagination (defaults to 0)
+ *          schema:
+ *              type: integer
  *     responses:
  *       200:
  *         description: Successfully fetched the profile's recent conversations.
  *       400:
- *         description: Missing or invalid profile id / n.
+ *         description: Missing or invalid profile id / n / skip.
  *       404:
  *         description: No profile found for the given id.
  *       500:
@@ -53,13 +59,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
             return NextResponse.json({ success: false, error: "n must be an integer between 1 and 50." }, { status: 400 });
         }
 
+        const skipParam = request.nextUrl.searchParams.get("skip");
+        const skip = skipParam === null ? 0 : Number(skipParam);
+        if (!Number.isInteger(skip) || skip < 0) {
+            return NextResponse.json({ success: false, error: "skip must be a non-negative integer." }, { status: 400 });
+        }
+
         const profile = await profiles.getProfileById(profile_id);
         if (!profile) {
             return NextResponse.json({ success: false, error: "No profile found for the given id." }, { status: 404 });
         }
 
-        const recent = await conversations.getConversationsByProfile(profile_id, n);
-        return NextResponse.json({ success: true, count: recent.length, data: recent }, { status: 200 });
+        // Fetch one extra row to know whether more pages exist, without a
+        // separate count query.
+        const rows = await conversations.getConversationsByProfile(profile_id, n + 1, skip);
+        const hasMore = rows.length > n;
+        const recent = rows.slice(0, n);
+
+        return NextResponse.json({ success: true, count: recent.length, hasMore, data: recent }, { status: 200 });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }

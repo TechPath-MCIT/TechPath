@@ -32,6 +32,9 @@ interface AgentChatProps {
   isSending?: boolean;
   errorMessage?: string | null;
   onRetry?: () => void;
+  hasMoreConversations?: boolean;
+  isLoadingMoreConversations?: boolean;
+  onLoadMoreConversations?: () => void;
 }
 
 export function AgentChat({
@@ -48,6 +51,9 @@ export function AgentChat({
   isSending = false,
   errorMessage = null,
   onRetry,
+  hasMoreConversations = false,
+  isLoadingMoreConversations = false,
+  onLoadMoreConversations,
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -194,6 +200,16 @@ export function AgentChat({
               </div>
             ))}
           </div>
+          {!conversationSearch.trim() && hasMoreConversations && (
+            <button
+              onClick={onLoadMoreConversations}
+              disabled={isLoadingMoreConversations}
+              className="w-full mt-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-stone-100 disabled:opacity-50"
+              style={{ color: '#02746f' }}
+            >
+              {isLoadingMoreConversations ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </div>
       </div>
 
