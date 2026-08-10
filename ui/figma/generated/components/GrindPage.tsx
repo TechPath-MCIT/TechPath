@@ -1015,7 +1015,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             <textarea
               value={agentInputText}
               onChange={e => setAgentInputText(e.target.value)}
-              placeholder="Tell the AI what to update... e.g., 'Add AWS to my skills' or 'Set my target role to Data Scientist' or 'I now have 3 years of experience'"
+              placeholder="Tell the AI what to update... e.g., 'I finished the Networked Systems course' or 'Add a project called Chess Engine' or 'Add AWS to my skills'"
               disabled={isSendingAgentUpdate}
               className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
               style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
