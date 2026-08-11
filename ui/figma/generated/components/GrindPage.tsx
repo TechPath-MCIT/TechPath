@@ -421,6 +421,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     }
   }, [profileId]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [courseraSearchQuery, setCourseraSearchQuery] = useState('');
   // Single-select — MCIT and YouTube are both tailored to the target role,
   // so mixing them in one list made sense as a source toggle. Coursera isn't
   // tailored at all (rating-sorted only), so it lives in its own separate
@@ -457,7 +458,16 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // tailored to the target role.
   const courseraResources: DisplayResource[] = resources
   .filter((resource) => resource.isExternal)
-  .map(toDisplayResource);
+  .map(toDisplayResource)
+  .filter((resource) => {
+    const query = courseraSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    return (
+      resource.title.toLowerCase().includes(query) ||
+      resource.skills.some((skill) => skill.toLowerCase().includes(query))
+    );
+  });
 
   const userProfile = sampleUserProfile;
 
@@ -665,6 +675,32 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             </div>
             {showCourseraSection ? <ChevronUp className="w-4 h-4" style={{ color: '#02746f' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#02746f' }} />}
           </button>
+
+          {showCourseraSection && (
+            <div className="relative mt-3">
+              <Search
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: '#55371e' }}
+              />
+              <input
+                type="text"
+                value={courseraSearchQuery}
+                onChange={(e) => setCourseraSearchQuery(e.target.value)}
+                placeholder="Search Coursera courses…"
+                className="w-full pl-9 pr-8 py-2 rounded-lg text-sm border outline-none"
+                style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
+              />
+              {courseraSearchQuery && (
+                <button
+                  onClick={() => setCourseraSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Resources List - Scrollable */}
