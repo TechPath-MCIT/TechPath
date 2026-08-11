@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Filter, BookOpen, Calendar, Award, Briefcase,
+  BookOpen, Calendar, Award, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
   ChevronDown, ChevronUp, Edit3, Send, Sparkles, Search, X
 } from 'lucide-react';
@@ -99,6 +99,44 @@ interface DisplayResource {
   url?: string;
   instructor?: string;
   isExternal?: boolean;
+}
+
+function toDisplayResource(resource: ResourceApiItem): DisplayResource {
+  const creators = resource.course?.creators;
+
+  const instructor = resource.instructorText
+    ? resource.instructorText
+    : Array.isArray(creators)
+    ? creators
+        .filter((creator): creator is string => typeof creator === "string")
+        .join(", ")
+    : undefined;
+
+  let cost: string | undefined = undefined;
+
+  if (resource.pricing.note) {
+    cost = resource.pricing.note;
+  } else if (resource.pricing.type === "free") {
+    cost = "Free";
+  } else if (resource.pricing.amount !== null) {
+    cost = [resource.pricing.currency, resource.pricing.amount].filter(Boolean).join(" ");
+  }
+
+  return {
+    id: resource.id,
+    type: resource.type,
+    source: resource.source ?? "Unknown",
+    title: resource.course ? `${resource.course.courseId} - ${resource.name}` : resource.name,
+    description: resource.description ?? "No description available.",
+    skills: resource.skills.flatMap((skill) => (skill.name ? [skill.name] : [])),
+    duration:
+      resource.durationText ??
+      (resource.durationMinutes === null ? undefined : `${resource.durationMinutes} minutes`),
+    cost,
+    url: resource.url ?? undefined,
+    instructor: instructor || undefined,
+    isExternal: resource.isExternal ?? false,
+  };
 }
 
 interface RoleSkill {
@@ -382,11 +420,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       setIsLoadingVideos(false);
     }
   }, [profileId]);
-  const [sourceFilters, setSourceFilters] = useState<string[]>([]);
-  const [typeFilters, setTypeFilters] = useState<string[]>([]);
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showExternalCourses, setShowExternalCourses] = useState(true);
+  // Single-select — MCIT and YouTube are both tailored to the target role,
+  // so mixing them in one list made sense as a source toggle. Coursera isn't
+  // tailored at all (rating-sorted only), so it lives in its own separate
+  // section below instead of a third tab here — see showCourseraSection.
+  const [activeSource, setActiveSource] = useState<'mcit' | 'youtube'>('mcit');
+  const [showCourseraSection, setShowCourseraSection] = useState(false);
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -397,71 +437,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
   const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
 
+  // MCIT courses only — already ranked by relevance to the target role from
+  // the API (see services/resources.ts), so no client-side re-sort here.
   const combinedResources: DisplayResource[] = resources
-  .filter(
-    (resource) =>
-      sourceFilters.length === 0 ||
-      (resource.source !== null &&
-        sourceFilters.includes(resource.source)),
-  )
-  .filter(
-    (resource) =>
-      typeFilters.length === 0 ||
-      typeFilters.includes(resource.type),
-  )
-  .filter((resource) => showExternalCourses || !resource.isExternal)
-  .map((resource) => {
-    const creators = resource.course?.creators;
-
-    const instructor = resource.instructorText
-      ? resource.instructorText
-      : Array.isArray(creators)
-      ? creators
-          .filter(
-            (creator): creator is string =>
-              typeof creator === "string",
-          )
-          .join(", ")
-      : undefined;
-
-    let cost: string | undefined = undefined;
-
-    if (resource.pricing.note) {
-      cost = resource.pricing.note;
-    } else if (resource.pricing.type === "free") {
-      cost = "Free";
-    } else if (resource.pricing.amount !== null) {
-      cost = [
-        resource.pricing.currency,
-        resource.pricing.amount,
-      ]
-        .filter(Boolean)
-        .join(" ");
-    }
-
-    return {
-      id: resource.id,
-      type: resource.type,
-      source: resource.source ?? "Unknown",
-      title: resource.course
-        ? `${resource.course.courseId} - ${resource.name}`
-        : resource.name,
-      description:
-        resource.description ?? "No description available.",
-      skills: resource.skills.flatMap((skill) =>
-        skill.name ? [skill.name] : [],
-      ),
-      duration:
-        resource.durationText ??
-        (resource.durationMinutes === null
-          ? undefined
-          : `${resource.durationMinutes} minutes`),
-      cost,
-      url: resource.url ?? undefined,
-      instructor: instructor || undefined,
-      isExternal: resource.isExternal ?? false,
-    };
-  })
+  .filter((resource) => !resource.isExternal)
+  .map(toDisplayResource)
   .filter((resource) => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
@@ -470,8 +450,14 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       resource.title.toLowerCase().includes(query) ||
       resource.skills.some((skill) => skill.toLowerCase().includes(query))
     );
-  })
-  .sort((a, b) => a.title.localeCompare(b.title));
+  });
+
+  // Coursera courses — kept as a separate, clearly-labeled "browse" section
+  // (not mixed with MCIT/YouTube) since they're only rating-sorted, not
+  // tailored to the target role.
+  const courseraResources: DisplayResource[] = resources
+  .filter((resource) => resource.isExternal)
+  .map(toDisplayResource);
 
   const userProfile = sampleUserProfile;
 
@@ -577,47 +563,18 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     }
   };
 
-  const toggleSourceFilter = (source: string) => {
-    const isTurningOn = !sourceFilters.includes(source);
-
-    setSourceFilters(prev =>
-      prev.includes(source) ? prev.filter(s => s !== source) : [...prev, source]
-    );
+  const selectSource = (source: 'mcit' | 'youtube') => {
+    setActiveSource(source);
 
     // Lazily load the target-role videos the first time YouTube is selected.
-    if (source === YOUTUBE_SOURCE && isTurningOn && !hasLoadedVideos) {
+    if (source === 'youtube' && !hasLoadedVideos) {
       void getVideo();
     }
   };
 
-  const toggleTypeFilter = (type: string) => {
-    setTypeFilters(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
-  };
-
-  const availableSources = Array.from(
-    new Set([
-      YOUTUBE_SOURCE,
-      ...resources.flatMap((resource) =>
-        resource.source ? [resource.source] : [],
-      ),
-    ]),
-  ).sort();
-
-  const showYouTube = sourceFilters.includes(YOUTUBE_SOURCE);
-
-  const availableTypes = Array.from(
-    new Set(resources.map((resource) => resource.type)),
-  ).sort();
-
-  // The course search bar only filters combinedResources (MCIT courses) —
-  // it has no effect on the separately-rendered YouTube video list, so hide
-  // it whenever the course list itself isn't visible (i.e. only "YouTube" is
-  // selected as an active source filter).
-  const coursesVisible =
-    sourceFilters.length === 0 ||
-    sourceFilters.some((source) => source !== YOUTUBE_SOURCE);
+  // The course search bar only searches MCIT courses, so hide it whenever
+  // that source isn't the active tab.
+  const coursesVisible = activeSource === 'mcit' && !showCourseraSection;
 
   return (
     <div className="h-full grid grid-cols-12 gap-6" style={{ maxHeight: 'calc(100vh - 120px)' }}>
@@ -631,32 +588,34 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 Resources
               </h2>
               <p className="text-sm" style={{ color: '#55371e' }}>
-                Personalized for: <span className="font-semibold">{targetRole}</span>
+                {activeSource === 'mcit' && (
+                  <>Sorted by relevance to: <span className="font-semibold">{targetRole}</span></>
+                )}
+                {activeSource === 'youtube' && (
+                  <>Top skills for: <span className="font-semibold">{targetRole}</span></>
+                )}
               </p>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <button
-                onClick={() => setShowExternalCourses((v) => !v)}
-                title={showExternalCourses ? 'Hide Coursera courses' : 'Show Coursera courses'}
+                onClick={() => selectSource('mcit')}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:shadow-md"
                 style={{
-                  background: showExternalCourses ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
-                  color: showExternalCourses ? '#ffffff' : '#15100c',
+                  background: activeSource === 'mcit' ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                  color: activeSource === 'mcit' ? '#ffffff' : '#15100c',
                 }}
               >
-                Coursera Courses
+                MCIT Courses
               </button>
               <button
-                onClick={() => setShowFilterPanel(!showFilterPanel)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
+                onClick={() => selectSource('youtube')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:shadow-md"
                 style={{
-                  background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
-                  color: showFilterPanel ? '#ffffff' : '#02746f',
+                  background: activeSource === 'youtube' ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                  color: activeSource === 'youtube' ? '#ffffff' : '#15100c',
                 }}
               >
-                <Filter className="w-4 h-4" />
-                <span className="text-sm font-medium">Filters</span>
-                {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                YouTube
               </button>
             </div>
           </div>
@@ -687,62 +646,110 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             </div>
           )}
 
-          {/* Filter Panel */}
-          {showFilterPanel && (
-            <div className="space-y-4 p-4 rounded-lg" style={{ backgroundColor: 'rgba(244, 241, 242, 1)' }}>
-              <div>
-                <h4 className="text-sm font-semibold mb-2" style={{ color: '#15100c' }}>
-                  Source
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {availableSources.map(source => (
-                    <button
-                      key={source}
-                      onClick={() => toggleSourceFilter(source)}
-                      className="px-3 py-1.5 rounded-lg text-sm transition-all"
-                      style={{
-                        background: sourceFilters.includes(source)
-                          ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)'
-                          : 'rgba(184, 226, 212, 0.2)',
-                        color: sourceFilters.includes(source) ? '#ffffff' : '#15100c',
-                      }}
-                    >
-                      {source}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold mb-2" style={{ color: '#15100c' }}>
-                  Type
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {availableTypes.map(type => (
-                    <button
-                      key={type}
-                      onClick={() => toggleTypeFilter(type)}
-                      className="px-3 py-1.5 rounded-lg text-sm transition-all capitalize"
-                      style={{
-                        background: typeFilters.includes(type)
-                          ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)'
-                          : 'rgba(184, 226, 212, 0.2)',
-                        color: typeFilters.includes(type) ? '#ffffff' : '#15100c',
-                      }}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Explore More Courses - Coursera, kept as its own collapsible
+              section (not a third source tab) since it's only rating-sorted,
+              not tailored to the target role. Placed right under the search
+              bar so it's visible without scrolling past the course list. */}
+          <button
+            onClick={() => setShowCourseraSection((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-all hover:shadow-md"
+            style={{ backgroundColor: 'rgba(253, 211, 87, 0.15)', border: '1px solid rgba(253, 211, 87, 0.4)' }}
+          >
+            <div>
+              <h3 className="text-sm font-semibold" style={{ color: '#15100c' }}>
+                Explore More Courses (Coursera)
+              </h3>
+              <p className="text-xs" style={{ color: '#55371e' }}>
+                Sorted by rating, not tailored to your role
+              </p>
             </div>
-          )}
+            {showCourseraSection ? <ChevronUp className="w-4 h-4" style={{ color: '#02746f' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#02746f' }} />}
+          </button>
         </div>
 
         {/* Resources List - Scrollable */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-3">
+            {/* Coursera - takes over the full scrollable area while expanded,
+                instead of squeezing into a small box above MCIT/YouTube. */}
+            {showCourseraSection && (
+              <>
+                {courseraResources.length === 0 && (
+                  <div className="py-12 text-center text-sm" style={{ color: "#55371e" }}>
+                    No courses found.
+                  </div>
+                )}
+                {courseraResources.map((resource) => (
+                  <div
+                    key={resource.id}
+                    className="p-4 rounded-lg border transition-all hover:shadow-md"
+                    style={{ borderColor: 'rgba(21, 16, 12, 0.15)' }}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <BookOpen className="w-4 h-4" style={{ color: '#02746f' }} />
+                          <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(253, 211, 87, 0.3)', color: '#15100c' }}>
+                            {resource.source}
+                          </span>
+                        </div>
+                        <h4 className="font-semibold mb-1" style={{ color: '#15100c' }}>
+                          {resource.title}
+                        </h4>
+                        <p className="text-sm mb-2" style={{ color: '#55371e' }}>
+                          {resource.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 mb-3 text-xs" style={{ color: '#55371e' }}>
+                      {resource.duration && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {resource.duration}
+                        </span>
+                      )}
+                      {resource.instructor && <span>By {resource.instructor}</span>}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {resource.skills.slice(0, 5).map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-1 rounded text-xs font-medium"
+                          style={{ backgroundColor: 'rgba(184, 226, 212, 0.2)', color: '#15100c' }}
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                      {resource.skills.length > 5 && (
+                        <span className="px-2 py-1 text-xs" style={{ color: '#55371e' }}>
+                          +{resource.skills.length - 5} more
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end">
+                      {resource.url && (
+                        <a
+                          href={resource.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md"
+                          style={{ background: 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)', color: '#ffffff' }}
+                        >
+                          View Resource
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
             {/* YouTube Videos - shown when the YouTube source is active */}
-            {showYouTube && (
+            {!showCourseraSection && activeSource === 'youtube' && (
               <div className="space-y-3">
                 {isLoadingVideos && (
                   <div
@@ -842,8 +849,9 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
             {!isLoadingResources &&
               !resourcesError &&
-              combinedResources.length === 0 &&
-              !(showYouTube && sourceFilters.length === 1) && (
+              !showCourseraSection &&
+              activeSource === 'mcit' &&
+              combinedResources.length === 0 && (
                 <div
                   className="py-12 text-center text-sm"
                   style={{ color: "#55371e" }}
@@ -854,6 +862,8 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
             {!isLoadingResources &&
               !resourcesError &&
+              !showCourseraSection &&
+              activeSource === 'mcit' &&
               combinedResources.map((resource) => {
               const IconComponent = resource.type === 'course' || resource.type === 'certification'
                 ? BookOpen
