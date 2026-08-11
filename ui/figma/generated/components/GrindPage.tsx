@@ -670,7 +670,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 Explore More Courses (Coursera)
               </h3>
               <p className="text-xs" style={{ color: '#55371e' }}>
-                Sorted by rating, not tailored to your role
+                Tech courses sorted by rating, not tailored to your role
               </p>
             </div>
             {showCourseraSection ? <ChevronUp className="w-4 h-4" style={{ color: '#02746f' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#02746f' }} />}
