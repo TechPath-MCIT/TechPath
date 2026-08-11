@@ -20,7 +20,10 @@ export interface ResourceApiItem {
   };
 
   durationMinutes: number | null;
+  durationText?: string | null;
+  instructorText?: string | null;
   publicationStatus: string;
+  isExternal?: boolean;
 
   skills: Array<{
     skillId: number;
@@ -60,24 +63,39 @@ export default function GrindContainer() {
         setIsLoadingResources(true);
         setResourcesError(null);
 
-        const response = await fetch(
-          "/api/resources?type=course&source=MCIT&limit=100",
-          {
+        const [mcitResponse, outsideResponse] = await Promise.all([
+          fetch("/api/resources?type=course&source=MCIT&limit=100", {
             method: "GET",
             signal: controller.signal,
-          },
-        );
+          }),
+          fetch("/api/outside-courses?limit=150", {
+            method: "GET",
+            signal: controller.signal,
+          }),
+        ]);
 
-        const result =
-          (await response.json()) as ResourcesApiResponse;
+        const mcitResult =
+          (await mcitResponse.json()) as ResourcesApiResponse;
 
-        if (!response.ok || !result.success) {
+        if (!mcitResponse.ok || !mcitResult.success) {
           throw new Error(
-            result.error ?? "Failed to load resources.",
+            mcitResult.error ?? "Failed to load resources.",
           );
         }
 
-        setResources(result.data ?? []);
+        const outsideResult =
+          (await outsideResponse.json()) as ResourcesApiResponse;
+
+        if (!outsideResponse.ok || !outsideResult.success) {
+          throw new Error(
+            outsideResult.error ?? "Failed to load outside courses.",
+          );
+        }
+
+        setResources([
+          ...(mcitResult.data ?? []),
+          ...(outsideResult.data ?? []),
+        ]);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;

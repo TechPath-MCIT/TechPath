@@ -134,6 +134,27 @@ model ProfileSkillRating {
   @@map("profile_skill_ratings")
 }
 
+model OutsideCourseResource {
+  id                Int      @id @default(autoincrement())
+  title             String
+  url               String   @unique
+  shortIntro        String?
+  category          String?
+  subCategory       String?
+  courseType        String?
+  language          String?
+  subtitleLanguages String?
+  skills            String?
+  instructors       String?
+  rating            Float?
+  numberOfViewers   Int?
+  duration          String?
+  site              String?
+  createdAt         DateTime @default(now())
+
+  @@map("outside_course_resources")
+}
+
 model Profile_Skills {
   id        Int     @id @default(autoincrement())
   profileId Int

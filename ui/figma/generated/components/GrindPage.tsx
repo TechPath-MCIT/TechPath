@@ -69,6 +69,9 @@ interface ResourceApiItem {
   };
 
   durationMinutes: number | null;
+  durationText?: string | null;
+  instructorText?: string | null;
+  isExternal?: boolean;
 
   skills: Array<{
     skillId: number;
@@ -95,6 +98,7 @@ interface DisplayResource {
   cost?: string;
   url?: string;
   instructor?: string;
+  isExternal?: boolean;
 }
 
 interface RoleSkill {
@@ -382,6 +386,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [typeFilters, setTypeFilters] = useState<string[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showExternalCourses, setShowExternalCourses] = useState(true);
   const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -404,10 +409,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       typeFilters.length === 0 ||
       typeFilters.includes(resource.type),
   )
+  .filter((resource) => showExternalCourses || !resource.isExternal)
   .map((resource) => {
     const creators = resource.course?.creators;
 
-    const instructor = Array.isArray(creators)
+    const instructor = resource.instructorText
+      ? resource.instructorText
+      : Array.isArray(creators)
       ? creators
           .filter(
             (creator): creator is string =>
@@ -444,12 +452,14 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         skill.name ? [skill.name] : [],
       ),
       duration:
-        resource.durationMinutes === null
+        resource.durationText ??
+        (resource.durationMinutes === null
           ? undefined
-          : `${resource.durationMinutes} minutes`,
+          : `${resource.durationMinutes} minutes`),
       cost,
       url: resource.url ?? undefined,
       instructor: instructor || undefined,
+      isExternal: resource.isExternal ?? false,
     };
   })
   .filter((resource) => {
@@ -624,18 +634,31 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 Personalized for: <span className="font-semibold">{targetRole}</span>
               </p>
             </div>
-            <button
-              onClick={() => setShowFilterPanel(!showFilterPanel)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md flex-shrink-0"
-              style={{
-                background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
-                color: showFilterPanel ? '#ffffff' : '#02746f',
-              }}
-            >
-              <Filter className="w-4 h-4" />
-              <span className="text-sm font-medium">Filters</span>
-              {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowExternalCourses((v) => !v)}
+                title={showExternalCourses ? 'Hide Coursera courses' : 'Show Coursera courses'}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:shadow-md"
+                style={{
+                  background: showExternalCourses ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                  color: showExternalCourses ? '#ffffff' : '#15100c',
+                }}
+              >
+                Coursera Courses
+              </button>
+              <button
+                onClick={() => setShowFilterPanel(!showFilterPanel)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:shadow-md"
+                style={{
+                  background: showFilterPanel ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                  color: showFilterPanel ? '#ffffff' : '#02746f',
+                }}
+              >
+                <Filter className="w-4 h-4" />
+                <span className="text-sm font-medium">Filters</span>
+                {showFilterPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {coursesVisible && (
@@ -911,7 +934,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
                       {/* Action Row */}
                       <div className="flex items-center justify-end gap-2">
-                        {(() => {
+                        {!resource.isExternal && (() => {
                           const pairingStatus = resourceStatusById.get(resource.id);
                           const isInProgress = pairingStatus === IN_PROGRESS_STATUS_ID;
                           const isComplete = pairingStatus === COMPLETED_STATUS_ID;
