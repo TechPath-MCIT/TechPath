@@ -110,11 +110,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
  *            in addition to setting the status.
  *          schema:
  *              type: boolean
+ *        - name: startDate
+ *          in: query
+ *          required: false
+ *          description: ISO date (YYYY-MM-DD) to set as the enrollment start date.
+ *          schema:
+ *              type: string
+ *        - name: endDate
+ *          in: query
+ *          required: false
+ *          description: ISO date (YYYY-MM-DD) to set as the expected end date.
+ *          schema:
+ *              type: string
  *     responses:
  *       200:
  *         description: Successfully set the resource status for the profile.
  *       400:
- *         description: Missing or invalid profile id, resourceId, or statusId.
+ *         description: Missing or invalid profile id, resourceId, statusId, startDate, or endDate.
  *       500:
  *         description: Core internal server network execution block.
  */
@@ -130,6 +142,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         const statusParam = request.nextUrl.searchParams.get("statusId");
         const statusId = Number(statusParam);
         const complete = request.nextUrl.searchParams.get("complete") === "true";
+        const startDateParam = request.nextUrl.searchParams.get("startDate");
+        const endDateParam = request.nextUrl.searchParams.get("endDate");
 
         if (typeof resourceId !== "string" || resourceId.length === 0) {
             return NextResponse.json({ success: false, error: "resourceId is required." }, { status: 400 });
@@ -139,9 +153,20 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             return NextResponse.json({ success: false, error: "statusId must be a valid integer." }, { status: 400 });
         }
 
+        const dates: profiles.ResourceDateUpdates = {};
+        for (const [param, key] of [[startDateParam, "startDate"], [endDateParam, "expectedEndDate"]] as const) {
+            if (param === null) continue;
+            const parsed = new Date(param);
+            if (Number.isNaN(parsed.getTime())) {
+                return NextResponse.json({ success: false, error: `${key} must be a valid date.` }, { status: 400 });
+            }
+            dates[key] = parsed;
+        }
+        const hasDates = Object.keys(dates).length > 0;
+
         const result = complete
             ? await profiles.completeResourceForProfile(profile_id, resourceId, statusId)
-            : await profiles.setResourceStatusForProfile(profile_id, resourceId, statusId);
+            : await profiles.setResourceStatusForProfile(profile_id, resourceId, statusId, hasDates ? dates : undefined);
 
         return NextResponse.json({ success: true, data: result }, { status: 200 });
     } catch (error: any) {
