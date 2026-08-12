@@ -1679,6 +1679,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                     const key = `course-done-${course.id}`;
                     const isOpen = expandedItem === key;
                     const hasDetails = Boolean(course.resource?.description || course.resource?.source);
+                    const isEditingCompletedDate = editingEndDateId === course.resource_id;
                     return (
                       <div
                         key={course.id}
@@ -1698,9 +1699,43 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                             <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
                           </button>
                         </div>
-                        {course.expectedEndDate && (
-                          <div className="text-xs" style={{ color: '#55371e' }}>Completed: {formatIsoDateLocal(course.expectedEndDate)}</div>
-                        )}
+                        <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
+                            {isEditingCompletedDate ? (
+                              <>
+                                <span>Completed:</span>
+                                <DatePicker
+                                  value={editingEndDateValue}
+                                  onChange={setEditingEndDateValue}
+                                  placeholder="Completed date"
+                                />
+                                <button
+                                  onClick={() => editingEndDateValue && handleUpdateEndDate(course.resource_id, course.statusId, editingEndDateValue)}
+                                  disabled={!editingEndDateValue || updatingEndDateResourceId === course.resource_id}
+                                  className="font-medium disabled:opacity-50"
+                                  style={{ color: '#02746f' }}
+                                >
+                                  Save
+                                </button>
+                                <button onClick={() => setEditingEndDateId(null)} style={{ color: '#55371e' }}>
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <span>Completed: {course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}</span>
+                                <button
+                                  onClick={() => {
+                                    setEditingEndDateId(course.resource_id);
+                                    setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
+                                  }}
+                                  title="Update completed date"
+                                  className="p-0.5 rounded hover:bg-black/5"
+                                >
+                                  <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+                                </button>
+                              </>
+                            )}
+                        </div>
                         <ResourceSkillBadges resource={course.resource} className="mt-2" />
                         {hasDetails && (
                           <button
