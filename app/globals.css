@@ -5,4 +5,28 @@
 
 body {
   font-family: var(--font-open-sans), Arial, Helvetica, sans-serif;
+  .info-btn {
+    background-color: #424040; /* Cyan info color */
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 400;
+    border-radius: 50%;
+    padding: 0px;
+    width: 15px;
+    height: 15px;
+    border: 1px solid #272626;
+    cursor: arrow;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .info-hover{
+    position: relative;  /* Takes it out of the normal layout flow */
+    font-size: 12px;
+    overflow: scroll;
+    z-index: 10;        /* Higher number means it sits closer to the viewer */
+  }
+
+
 }
