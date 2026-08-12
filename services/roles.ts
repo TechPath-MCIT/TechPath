@@ -1,6 +1,6 @@
 // services/roles.ts
 import { prisma } from '@/lib/db';
-import { CATEGORY_BY_SKILL_TYPE, type Category } from '@/services/match';
+import { CATEGORY_BY_SKILL_TYPE, getRoleSkillCatalog, type Category } from '@/services/match';
 
 /**
  * Fetches a bounded list of roles from the cloud database
@@ -91,18 +91,7 @@ export async function getRoleTopSkillsBalanced(roleId: number, perCategory: numb
 }
 
 export async function getLandscapeRoles() {
-  const roles = await prisma.role.findMany({
-    include: {
-      role_skills: {
-        include: {
-          skills: true,
-        },
-        orderBy: {
-          count: "desc",
-        },
-      },
-    },
-  });
+  const roles = await getRoleSkillCatalog();
 
   return roles.flatMap((role) =>
     role.role
