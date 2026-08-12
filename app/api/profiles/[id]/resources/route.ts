@@ -6,6 +6,19 @@ interface RouteContext {
     params: Promise<{ id: string }>
 }
 
+// `new Date("YYYY-MM-DD")` parses as UTC midnight, not local midnight — on a
+// server running behind UTC that reads back one calendar day earlier than
+// what was actually selected once written to a @db.Date column. Parsing the
+// components directly and constructing a local Date avoids that shift (same
+// approach DatePicker.tsx already uses on the client for the same reason).
+function parseIsoDateLocal(value: string): Date | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const [, year, month, day] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * @swagger
  * /api/profiles/{id}/resources:
@@ -156,8 +169,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         const dates: profiles.ResourceDateUpdates = {};
         for (const [param, key] of [[startDateParam, "startDate"], [endDateParam, "expectedEndDate"]] as const) {
             if (param === null) continue;
-            const parsed = new Date(param);
-            if (Number.isNaN(parsed.getTime())) {
+            const parsed = parseIsoDateLocal(param);
+            if (parsed === null) {
                 return NextResponse.json({ success: false, error: `${key} must be a valid date.` }, { status: 400 });
             }
             dates[key] = parsed;
