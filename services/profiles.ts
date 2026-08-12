@@ -410,6 +410,11 @@ export async function getResourcesByProfile(profile_ID: number, statusId?: numbe
             },
             status: true,
         },
+        // Without an explicit order, Postgres doesn't guarantee row order for
+        // a plain scan — updating a row (e.g. editing its end date) can shift
+        // its physical position and reshuffle the list. Ordering by id keeps
+        // it stable (insertion order) regardless of later updates.
+        orderBy: { id: 'asc' },
     });
 }
 
