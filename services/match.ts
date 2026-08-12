@@ -37,7 +37,52 @@ function coverage(totals: CategoryTotals): number {
 // regardless of how well the profile actually matches the skills that define the role.
 const TOP_N_SKILLS_PER_CATEGORY = 10;
 
+async function fetchRoleSkillCatalog() {
+  return prisma.role.findMany({
+    include: {
+      role_skills: {
+        include: { skills: true },
+        orderBy: { count: 'desc' },
+      },
+    },
+  });
+}
+
+const ROLE_SKILL_CATALOG_TTL_MS = 5 * 60 * 1000;
+let roleSkillCatalogCache: { data: Awaited<ReturnType<typeof fetchRoleSkillCatalog>>; expiresAt: number } | null = null;
+
 /**
+ * Fetches every role joined with its role_skills + skills — the full skill-weight
+ * catalog used both to compute match scores and to pick each role's top skills for
+ * the Landscape page (see services/roles.ts getLandscapeRoles). This is static
+ * reference data with no in-app editing UI, so it's cached rather than re-joined on
+ * every request — that join was previously the dominant cost of loading /landscape.
+ *
+ * Uses a plain module-level cache rather than next/cache's unstable_cache: in dev,
+ * unstable_cache measurably never warmed up when called from a Route Handler (this
+ * function is also called from GET /api/profiles/[id]/match), even across repeated
+ * calls to that same route — likely a Next.js dev-mode caching-layer quirk. A
+ * hand-rolled cache avoids depending on that undocumented behavior.
+ */
+export async function getRoleSkillCatalog() {
+  const now = Date.now();
+
+  if (roleSkillCatalogCache && roleSkillCatalogCache.expiresAt > now) {
+    return roleSkillCatalogCache.data;
+  }
+
+  const data = await fetchRoleSkillCatalog();
+  roleSkillCatalogCache = { data, expiresAt: now + ROLE_SKILL_CATALOG_TTL_MS };
+  return data;
+}
+
+/**
+ * Only the role/skill-weight side of this computation (getRoleSkillCatalog) is
+ * cached — it's the same regardless of which profile is asking. The profile's own
+ * skills (profiles.getSkillsByProfile) are fetched fresh on every call, so editing
+ * a profile's skills is reflected here on the very next fetch; nothing needs to be
+ * invalidated for this score when skills change.
+ *
  * Computes a 0-100 match score for a profile against every role, based on how much
  * of each role's weighted skill importance (role_skills.count, grouped by skill type)
  * the profile's linked skills (Profile_Skills) cover, itself weighted by the role's
@@ -45,11 +90,13 @@ const TOP_N_SKILLS_PER_CATEGORY = 10;
  * Sorted descending by score.
  */
 export async function getRoleMatchScores(profileId: number): Promise<RoleMatchScore[]> {
-  const [profileSkillRows, allRoleSkills, allRoles] = await Promise.all([
+  const [profileSkillRows, roleCatalog] = await Promise.all([
     profiles.getSkillsByProfile(profileId),
-    prisma.role_skills.findMany({ include: { skills: true } }),
-    prisma.role.findMany({ orderBy: { roleId: 'asc' } }),
+    getRoleSkillCatalog(),
   ]);
+
+  const allRoleSkills = roleCatalog.flatMap((role) => role.role_skills);
+  const allRoles = roleCatalog;
 
   const profileSkillIds = new Set(profileSkillRows.map((row) => row.skillId));
 

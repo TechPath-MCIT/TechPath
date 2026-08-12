@@ -2,8 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import * as users from "@/services/users";
-import { extractProjects, extractResumeSummary, getProfileById } from "@/services/profiles";
-import { getRoleById } from "@/services/roles";
+import { extractProjects, extractResumeSummary } from "@/services/profiles";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import {
   WorkspaceProfileProvider,
@@ -23,21 +22,14 @@ export default async function WorkspaceLayout({
     redirect("/sign-in");
   }
 
-  const user = await users.getUserByClerkId(userId);
+  const user = await users.getUserWithProfileByClerkId(userId);
 
-  if (!user?.profile_ID) {
+  if (!user?.profile) {
     redirect("/resume-upload");
   }
 
-  const profile = await getProfileById(user.profile_ID);
-
-  if (!profile) {
-    redirect("/resume-upload");
-  }
-
-  const dreamRole = profile.roleId
-    ? await getRoleById(profile.roleId)
-    : null;
+  const profile = user.profile;
+  const dreamRole = profile.dreamRole;
 
   const { currentRole, experienceHighlights } = extractResumeSummary(
     profile.profexperience,

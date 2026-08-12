@@ -677,7 +677,10 @@ export async function addSkillsToProfile(profile_ID: number, skills_ids: number[
  * Clears existing links first so re-uploads don't hit unique-constraint errors
  * on skills that were already linked. Also invalidates any cached AI skill
  * proficiency ratings for this profile, since they were computed against the
- * skill set/experience this call is about to change.
+ * skill set/experience this call is about to change. The overall (0-100)
+ * Landscape match score needs no equivalent invalidation here — it's computed
+ * fresh from Profile_Skills on every request and is never itself cached (see
+ * services/match.ts getRoleMatchScores).
  * @param profile_ID to replace skills for
  * @param skills_name array of skills to link
  */
