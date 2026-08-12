@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { AddResourceDialog } from "./AddResourceDialog";
 import { DatePicker } from "./DatePicker";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // Virtual resource source for YouTube videos fetched per target-role skill.
 const YOUTUBE_SOURCE = "YouTube";
@@ -24,7 +25,13 @@ const COMPLETED_STATUS_ID = 2;
 const CANCELLED_STATUS_ID = 0;
 
 function isPastOrToday(isoDate: string): boolean {
-  return isoDate <= new Date().toISOString().slice(0, 10);
+  // isoDate may come back from the API as a full timestamp
+  // ("2026-08-12T00:00:00.000Z") rather than a bare date — comparing that
+  // directly against today's date-only string always sorts it as "later"
+  // (a longer string with a matching prefix is lexicographically greater),
+  // so a course starting exactly today was always misclassified as
+  // upcoming. Normalize both sides to the date-only portion first.
+  return isoDate.slice(0, 10) <= new Date().toISOString().slice(0, 10);
 }
 
 function courseProgressPercent(startDate: string, endDate: string): number {
@@ -345,11 +352,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [removingResourceId, setRemovingResourceId] = useState<string | null>(null);
   const [updatingEndDateResourceId, setUpdatingEndDateResourceId] = useState<string | null>(null);
 
-  // Ids currently showing an inline "are you sure?" confirmation, keyed by
-  // action so a course can't accidentally trigger the wrong one. Mirrors the
-  // delete-confirmation pattern used for conversations in AgentChat.tsx.
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [confirmCompleteId, setConfirmCompleteId] = useState<string | null>(null);
+  // The course pending a Remove or Complete confirmation, shown as a
+  // centered ConfirmDialog rather than an inline banner — the old banner sat
+  // right over the course title, hiding the one piece of context (which
+  // course) the confirmation needs to show.
+  const [removeConfirmTarget, setRemoveConfirmTarget] = useState<{ resourceId: string; title: string } | null>(null);
+  const [completeConfirmTarget, setCompleteConfirmTarget] = useState<{ resourceId: string; title: string } | null>(null);
 
   // The resource currently showing an inline end-date editor, and its draft value.
   const [editingEndDateId, setEditingEndDateId] = useState<string | null>(null);
@@ -575,6 +583,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // the API (see services/resources.ts), so no client-side re-sort here.
   const combinedResources: DisplayResource[] = resources
   .filter((resource) => !resource.isExternal)
+  .filter((resource) => {
+    // Once a course is added to My Progress (In Progress or Completed), it
+    // no longer needs to show up in the browsing list — a Cancelled/removed
+    // course still passes through here so it can be re-added.
+    const status = resourceStatusById.get(resource.id);
+    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
+  })
   .map(toDisplayResource)
   .filter((resource) => {
     const query = searchQuery.trim().toLowerCase();
@@ -698,7 +713,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       ? `${course.resource.courses.course_id} - ${name}`
       : name;
     const isEditingEndDate = editingEndDateId === course.resource_id;
-    const isConfirmingComplete = confirmCompleteId === course.resource_id;
     const showBar = opts.showProgress && Boolean(course.startDate) && Boolean(course.expectedEndDate);
     const progressPercent = showBar ? courseProgressPercent(course.startDate!, course.expectedEndDate!) : null;
 
@@ -724,7 +738,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
               )
             )}
             <button
-              onClick={() => void handleRemoveCourse(course.resource_id)}
+              onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
               disabled={removingResourceId === course.resource_id}
               title="Remove course"
               className="p-1 -m-1 rounded-md hover:bg-black/5 disabled:opacity-50"
@@ -799,7 +813,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
         {opts.showCompleteButton && (
           <button
-            onClick={() => setConfirmCompleteId(course.resource_id)}
+            onClick={() => setCompleteConfirmTarget({ resourceId: course.resource_id, title })}
             disabled={completingResourceId === course.resource_id}
             className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
             style={{ backgroundColor: '#02746f', color: '#ffffff' }}
@@ -807,34 +821,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             <CheckCircle className="w-3.5 h-3.5" />
             {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
           </button>
-        )}
-
-        {isConfirmingComplete && (
-          <div
-            className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg shadow-md"
-            style={{ backgroundColor: '#fff', border: '1px solid rgba(2, 116, 111, 0.3)' }}
-          >
-            <span className="text-xs" style={{ color: '#15100c' }}>Mark this course complete?</span>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                onClick={() => {
-                  setConfirmCompleteId(null);
-                  void handleCompleteCourse(course.resource_id);
-                }}
-                className="px-2 py-1 rounded-md text-xs font-medium"
-                style={{ backgroundColor: '#02746f', color: '#ffffff' }}
-              >
-                Complete
-              </button>
-              <button
-                onClick={() => setConfirmCompleteId(null)}
-                className="px-2 py-1 rounded-md text-xs font-medium"
-                style={{ backgroundColor: 'rgba(184, 226, 212, 0.2)', color: '#02746f' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
         )}
       </div>
     );
@@ -991,9 +977,52 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                         <h4 className="font-semibold mb-1" style={{ color: '#15100c' }}>
                           {resource.title}
                         </h4>
-                        <p className="text-sm mb-2" style={{ color: '#55371e' }}>
-                          {resource.description}
-                        </p>
+                        <div className="relative mb-2">
+                          <p
+                            ref={(el) => measureDescription(resource.id, el)}
+                            className="text-sm"
+                            style={{
+                              color: '#55371e',
+                              lineHeight: '1.25rem',
+                              ...(expandedDescriptionIds.has(resource.id)
+                                ? {}
+                                : {
+                                    maxHeight: 'calc(1.25rem * 5)',
+                                    overflow: 'hidden',
+                                  }),
+                            }}
+                          >
+                            {resource.description}
+                          </p>
+                          {truncatedDescriptionIds.has(resource.id) &&
+                            !expandedDescriptionIds.has(resource.id) && (
+                              <button
+                                onClick={() => toggleDescriptionExpanded(resource.id)}
+                                className="text-xs font-medium"
+                                style={{
+                                  position: 'absolute',
+                                  right: 0,
+                                  bottom: 0,
+                                  paddingLeft: '1.5rem',
+                                  lineHeight: 'inherit',
+                                  background: 'linear-gradient(to right, transparent, #ffffff 45%)',
+                                  color: '#02746f',
+                                }}
+                              >
+                                ...Expand
+                              </button>
+                            )}
+                        </div>
+                        {truncatedDescriptionIds.has(resource.id) &&
+                          expandedDescriptionIds.has(resource.id) && (
+                            <button
+                              onClick={() => toggleDescriptionExpanded(resource.id)}
+                              className="text-xs font-medium mb-2"
+                              style={{ color: '#02746f' }}
+                            >
+                              Collapse
+                            </button>
+                          )}
                       </div>
                     </div>
 
@@ -1547,7 +1576,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                     const key = `course-done-${course.id}`;
                     const isOpen = expandedItem === key;
                     const hasDetails = Boolean(course.resource?.description || course.resource?.source);
-                    const isConfirmingRemove = confirmRemoveId === course.resource_id;
                     return (
                       <div
                         key={course.id}
@@ -1560,40 +1588,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                             <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                           </div>
                           <button
-                            onClick={() => setConfirmRemoveId(course.resource_id)}
+                            onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
                             title="Remove course"
                             className="p-1 -m-1 rounded-md hover:bg-black/5 flex-shrink-0"
                           >
                             <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
                           </button>
                         </div>
-                        {isConfirmingRemove && (
-                          <div
-                            className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg shadow-md"
-                            style={{ backgroundColor: '#fff', border: '1px solid rgba(2, 116, 111, 0.3)' }}
-                          >
-                            <span className="text-xs" style={{ color: '#15100c' }}>Remove this course?</span>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <button
-                                onClick={() => {
-                                  setConfirmRemoveId(null);
-                                  void handleRemoveCourse(course.resource_id);
-                                }}
-                                className="px-2 py-1 rounded-md text-xs font-medium"
-                                style={{ backgroundColor: '#ef4444', color: '#ffffff' }}
-                              >
-                                Remove
-                              </button>
-                              <button
-                                onClick={() => setConfirmRemoveId(null)}
-                                className="px-2 py-1 rounded-md text-xs font-medium"
-                                style={{ backgroundColor: 'rgba(184, 226, 212, 0.2)', color: '#02746f' }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
                         {course.expectedEndDate && (
                           <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
                         )}
@@ -1723,6 +1724,33 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         isSubmitting={addingResourceId === addDialogResource.id}
         onCancel={() => setAddDialogResource(null)}
         onConfirm={(startDate, endDate) => handleAddResource(addDialogResource.id, startDate, endDate)}
+      />
+    )}
+    {removeConfirmTarget && (
+      <ConfirmDialog
+        title="Remove course"
+        message={`Remove "${removeConfirmTarget.title}"? You can add it again later from Resources.`}
+        confirmLabel="Remove"
+        onCancel={() => setRemoveConfirmTarget(null)}
+        onConfirm={() => {
+          const { resourceId } = removeConfirmTarget;
+          setRemoveConfirmTarget(null);
+          void handleRemoveCourse(resourceId);
+        }}
+      />
+    )}
+    {completeConfirmTarget && (
+      <ConfirmDialog
+        title="Mark course complete"
+        message={`Mark "${completeConfirmTarget.title}" as complete? This adds its skills to your profile.`}
+        confirmLabel="Complete"
+        tone="primary"
+        onCancel={() => setCompleteConfirmTarget(null)}
+        onConfirm={() => {
+          const { resourceId } = completeConfirmTarget;
+          setCompleteConfirmTarget(null);
+          void handleCompleteCourse(resourceId);
+        }}
       />
     )}
     </>
