@@ -364,6 +364,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
   const [removingResourceId, setRemovingResourceId] = useState<string | null>(null);
   const [updatingEndDateResourceId, setUpdatingEndDateResourceId] = useState<string | null>(null);
+  const [updatingStartDateResourceId, setUpdatingStartDateResourceId] = useState<string | null>(null);
 
   // The course pending a Remove or Complete confirmation, shown as a
   // centered ConfirmDialog rather than an inline banner — the old banner sat
@@ -375,6 +376,10 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // The resource currently showing an inline end-date editor, and its draft value.
   const [editingEndDateId, setEditingEndDateId] = useState<string | null>(null);
   const [editingEndDateValue, setEditingEndDateValue] = useState('');
+
+  // Same, for the start-date editor.
+  const [editingStartDateId, setEditingStartDateId] = useState<string | null>(null);
+  const [editingStartDateValue, setEditingStartDateValue] = useState('');
 
   /**
    * Removes a course from the profile by setting its status to "Cancelled"
@@ -426,6 +431,32 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       // Minimal handling: no-op on failure.
     } finally {
       setUpdatingEndDateResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
+
+  /**
+   * Same as handleUpdateEndDate, but for startDate — a course's start date
+   * also determines whether it shows under In Progress or Upcoming (a
+   * future date), so editing it can move the card between sections.
+   */
+  const handleUpdateStartDate = useCallback(async (resourceId: string, statusId: number, startDate: string) => {
+    setUpdatingStartDateResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${statusId}&startDate=${startDate}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      setEditingStartDateId(null);
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setUpdatingStartDateResourceId(null);
     }
   }, [profileId, loadProfileResources]);
 
@@ -746,6 +777,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       ? `${course.resource.courses.course_id} - ${name}`
       : name;
     const isEditingEndDate = editingEndDateId === course.resource_id;
+    const isEditingStartDate = editingStartDateId === course.resource_id;
     const showBar = opts.showProgress && Boolean(course.startDate) && Boolean(course.expectedEndDate);
     const progressPercent = showBar ? courseProgressPercent(course.startDate!, course.expectedEndDate!) : null;
 
@@ -766,9 +798,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             {progressPercent !== null ? (
               <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{progressPercent}%</span>
             ) : (
-              course.status?.status && (
-                <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{course.status.status}</span>
-              )
+              // There's no separate "Upcoming" status in the DB — it's the
+              // same In Progress statusId, just grouped by date. The raw
+              // status text would say "In Progress" even in the Upcoming
+              // section, so label it from which section it's actually in.
+              <span className="text-xs font-semibold" style={{ color: '#02746f' }}>
+                {opts.showProgress ? course.status?.status : 'Upcoming'}
+              </span>
             )}
             <button
               onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
@@ -791,12 +827,44 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         )}
 
         {(course.startDate || course.expectedEndDate) && (
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
-            <span>
-              {course.startDate ? formatIsoDateLocal(course.startDate) : '—'}
-              {' – '}
-              {isEditingEndDate ? '' : course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}
-            </span>
+          <div className="flex items-center gap-1.5 text-xs flex-wrap" style={{ color: '#55371e' }}>
+            {isEditingStartDate ? (
+              <>
+                <DatePicker
+                  value={editingStartDateValue}
+                  onChange={setEditingStartDateValue}
+                  placeholder="Start date"
+                />
+                <button
+                  onClick={() => editingStartDateValue && handleUpdateStartDate(course.resource_id, course.statusId, editingStartDateValue)}
+                  disabled={!editingStartDateValue || updatingStartDateResourceId === course.resource_id}
+                  className="font-medium disabled:opacity-50"
+                  style={{ color: '#02746f' }}
+                >
+                  Save
+                </button>
+                <button onClick={() => setEditingStartDateId(null)} style={{ color: '#55371e' }}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span>{course.startDate ? formatIsoDateLocal(course.startDate) : '—'}</span>
+                <button
+                  onClick={() => {
+                    setEditingStartDateId(course.resource_id);
+                    setEditingStartDateValue(course.startDate ? course.startDate.slice(0, 10) : '');
+                  }}
+                  title="Update start date"
+                  className="p-0.5 rounded hover:bg-black/5"
+                >
+                  <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+                </button>
+              </>
+            )}
+
+            <span>–</span>
+
             {isEditingEndDate ? (
               <>
                 <DatePicker
@@ -818,16 +886,19 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => {
-                  setEditingEndDateId(course.resource_id);
-                  setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
-                }}
-                title="Update end date"
-                className="p-0.5 rounded hover:bg-black/5"
-              >
-                <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
-              </button>
+              <>
+                <span>{course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}</span>
+                <button
+                  onClick={() => {
+                    setEditingEndDateId(course.resource_id);
+                    setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
+                  }}
+                  title="Update end date"
+                  className="p-0.5 rounded hover:bg-black/5"
+                >
+                  <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+                </button>
+              </>
             )}
           </div>
         )}
