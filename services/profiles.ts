@@ -533,9 +533,10 @@ export async function setResourceStatusForProfile(
  * @param profile_ID the profile completing the resource
  * @param resource_id the resource to mark complete
  * @param statusId the resource_status.status_id representing completion
+ * @param dates optional startDate/expectedEndDate to write alongside completion
  */
-export async function completeResourceForProfile(profile_ID: number, resource_id: string, statusId: number) {
-    const link = await setResourceStatusForProfile(profile_ID, resource_id, statusId);
+export async function completeResourceForProfile(profile_ID: number, resource_id: string, statusId: number, dates?: ResourceDateUpdates) {
+    const link = await setResourceStatusForProfile(profile_ID, resource_id, statusId, dates);
 
     const resourceSkills = await prisma.resource_skills.findMany({
         where: { resource_id },

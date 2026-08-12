@@ -378,16 +378,33 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
             profileId,
             course.id,
             COMPLETED_STATUS_ID,
+            dates,
           );
-          return { success: true, courseName: course.name, status: 'complete', addedSkills };
+          return {
+            success: true,
+            courseName: course.name,
+            status: 'complete',
+            addedSkills,
+            startDate: parsedStart ? startDate : null,
+            expectedEndDate: parsedEnd ? parsedEnd.toISOString().slice(0, 10) : null,
+          };
         }
 
-        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, dates);
+        // Explicitly marking something "in progress" means starting now — if
+        // no startDate was given, default it to today rather than leaving it
+        // untouched. Otherwise a course previously scheduled for a future
+        // date (Upcoming) would flip to "in progress" status while keeping
+        // its stale future date, so it'd still show under Upcoming — a
+        // status/section mismatch.
+        const inProgressStart = parsedStart ?? new Date();
+        const inProgressDates = { startDate: inProgressStart, expectedEndDate: parsedEnd ?? undefined };
+
+        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, inProgressDates);
         return {
           success: true,
           courseName: course.name,
           status: 'in_progress',
-          startDate: parsedStart ? startDate : null,
+          startDate: inProgressStart.toISOString().slice(0, 10),
           expectedEndDate: parsedEnd ? parsedEnd.toISOString().slice(0, 10) : null,
         };
       },
