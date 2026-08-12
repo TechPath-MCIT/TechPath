@@ -69,7 +69,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, add_project, remove_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, remove_work_experience, add_project, remove_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
@@ -238,6 +238,20 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
       execute: async ({ company, title, years, bullets }) => {
         await profiles.addWorkExperience(profileId, { company, title, years, bullets });
         return { success: true, company, title };
+      },
+    }),
+    remove_work_experience: tool({
+      description:
+        "Remove a work experience entry from the user's profile by company (optionally narrowed by job title, if they had more than one role there). Only call this when the user explicitly asks to remove a job from their profile.",
+      inputSchema: z.object({
+        company: z.string().describe('The company name of the entry to remove.'),
+        title: z.string().optional().describe('The job title, if needed to disambiguate multiple roles at the same company.'),
+      }),
+      execute: async ({ company, title }) => {
+        const removed = await profiles.removeWorkExperience(profileId, company, title);
+        return removed
+          ? { success: true, company, title }
+          : { success: false, error: `No work experience entry found at "${company}"${title ? ` with title "${title}"` : ''}.` };
       },
     }),
     add_project: tool({
@@ -722,6 +736,7 @@ const MUTATION_TOOL_NAMES = new Set([
   'set_years_of_experience',
   'update_education',
   'add_work_experience',
+  'remove_work_experience',
   'add_project',
   'remove_project',
   'mark_course_status',

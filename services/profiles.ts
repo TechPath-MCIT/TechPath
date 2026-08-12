@@ -105,6 +105,49 @@ export async function addWorkExperience(profile_ID: number, entry: WorkExperienc
     });
 }
 
+/**
+ * Removes a work experience entry from a profile by company (case-insensitive),
+ * optionally narrowed by title too — useful if the same company appears twice
+ * (e.g. a promotion). If title is omitted, all entries at that company are removed.
+ * @param profile_ID the profile to update
+ * @param company the company name to match
+ * @param title optional job title to further narrow the match
+ * @returns whether any matching entry was actually found and removed
+ */
+export async function removeWorkExperience(profile_ID: number, company: string, title?: string): Promise<boolean> {
+    const current = await prisma.profile.findUnique({
+        where: { profile_ID },
+        select: { profexperience: true },
+    });
+
+    const existing = Array.isArray(current?.profexperience) ? current.profexperience : [];
+    const companyQuery = company.trim().toLowerCase();
+    const titleQuery = title?.trim().toLowerCase();
+
+    const remaining = existing.filter((entry) => {
+        const entryCompany = (entry as { company?: unknown })?.company;
+        const entryTitle = (entry as { title?: unknown })?.title;
+
+        const companyMatches = typeof entryCompany === 'string' && entryCompany.toLowerCase() === companyQuery;
+        if (!companyMatches) return true;
+
+        if (titleQuery === undefined) return false;
+        const titleMatches = typeof entryTitle === 'string' && entryTitle.toLowerCase() === titleQuery;
+        return !titleMatches;
+    });
+
+    if (remaining.length === existing.length) {
+        return false;
+    }
+
+    await prisma.profile.update({
+        where: { profile_ID },
+        data: { profexperience: remaining as unknown as Prisma.InputJsonValue },
+    });
+
+    return true;
+}
+
 export type ProjectEntry = {
     name: string;
     dateRange?: string;
