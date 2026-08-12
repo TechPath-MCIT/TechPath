@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import InfoButton from "@/components/InformationButton"
 import {
   Briefcase,
   DollarSign,
@@ -20,6 +21,7 @@ export type LandscapeRole = {
     name: string;
     weight: number | null;
     score: number | null;
+    comment: string | null;
   }>;
 
   mainResponsibilities: string[];
@@ -352,6 +354,7 @@ export function JobLandscapeNew({
                     return (
                       <div key={skill.skillId}>
                         <div className="mb-1 flex items-center justify-between">
+
                           <span
                             className="text-sm font-medium"
                             style={{ color: "#15100c" }}
@@ -395,7 +398,7 @@ export function JobLandscapeNew({
                         </div>
 
                         <div
-                          className="h-2 w-full overflow-hidden rounded-full"
+                            className="h-2 w-full overflow-hidden rounded-full"
                           style={{
                             backgroundColor: "rgba(184, 226, 212, 0.3)",
                           }}
@@ -409,13 +412,20 @@ export function JobLandscapeNew({
                             }}
                           />
                         </div>
-
-                        <div
-                          className="mt-1 text-right text-[10px]"
-                          style={{ color: "#8a7462" }}
-                        >
-                          Role importance: {importance}%
+                        <div class = "flex items-center justify-between">
+                          <InfoButton
+                              info = {skill.comment || ''}
+                              hover = {true}
+                          />
+                          <div
+                              className="mt-1 text-right text-[10px]"
+                              style={{ color: "#8a7462" }}
+                          >
+                            Role importance: {importance}%
+                          </div>
                         </div>
+
+
                       </div>
                     );
                   })}

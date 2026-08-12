@@ -101,6 +101,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
                 name: skill.name,
                 weight: skill.weight,
                 score: rating ? rating.proficiency : null,
+                comment: rating ?  rating.rationale : null,
             };
         });
 

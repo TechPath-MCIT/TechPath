@@ -105,7 +105,7 @@ export async function rateSkillProficiencies(
               .min(1)
               .max(10)
               .describe('1 = no evidence of this skill anywhere in the resume, 10 = expert, extensively evidenced across multiple years/roles/projects'),
-            rationale: z.string().describe('One sentence justifying the score, citing where in the resume the evidence (or lack of it) comes from'),
+            rationale: z.string().describe('One sentence justifying the score, citing where in the resume the evidence (or lack of it) comes from. Note, if the user has the skill listed assume they have learned it in class'),
           }),
         )
         .length(skillsToRate.length)
