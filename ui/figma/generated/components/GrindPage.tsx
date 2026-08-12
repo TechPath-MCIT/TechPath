@@ -304,18 +304,39 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     [profileResources],
   );
   const inProgressCourses = useMemo(
-    () => activeCourses.filter((item) => !item.startDate || isPastOrToday(item.startDate)),
+    () =>
+      activeCourses
+        .filter((item) => !item.startDate || isPastOrToday(item.startDate))
+        // Most recently started first; undated ones (no start date ever set)
+        // sort after all dated ones, in their original order.
+        .sort((a, b) => {
+          if (!a.startDate && !b.startDate) return 0;
+          if (!a.startDate) return 1;
+          if (!b.startDate) return -1;
+          return b.startDate.localeCompare(a.startDate);
+        }),
     [activeCourses],
   );
   const upcomingCourses = useMemo(
-    () => activeCourses.filter((item) => item.startDate && !isPastOrToday(item.startDate)),
+    () =>
+      activeCourses
+        .filter((item) => item.startDate && !isPastOrToday(item.startDate))
+        // Soonest upcoming start date first.
+        .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? '')),
     [activeCourses],
   );
   const completedCourses = useMemo(
     () =>
-      profileResources.filter(
-        (item) => item.resource?.resource_type === "course" && item.statusId === COMPLETED_STATUS_ID,
-      ),
+      profileResources
+        .filter((item) => item.resource?.resource_type === "course" && item.statusId === COMPLETED_STATUS_ID)
+        // Most recently completed first; courses with no completed date
+        // (never set) sort after all dated ones, in their original order.
+        .sort((a, b) => {
+          if (!a.expectedEndDate && !b.expectedEndDate) return 0;
+          if (!a.expectedEndDate) return 1;
+          if (!b.expectedEndDate) return -1;
+          return b.expectedEndDate.localeCompare(a.expectedEndDate);
+        }),
     [profileResources],
   );
 
