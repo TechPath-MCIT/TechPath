@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import * as users from "@/services/users";
 import ResumeUploadContainer from "./ResumeUploadContainer";
 
 export default async function ResumeUploadPage() {
@@ -9,5 +10,8 @@ export default async function ResumeUploadPage() {
     redirect("/sign-in");
   }
 
-  return <ResumeUploadContainer />;
+  const user = await users.getUserByClerkId(userId);
+  const hasProfile = Boolean(user?.profile_ID);
+
+  return <ResumeUploadContainer hasProfile={hasProfile} />;
 }

@@ -24,7 +24,7 @@ export default function FigmaPreview() {
 
           setStep("dashboard");
         }}
-        onLogout={() => setStep("login")}
+        onBack={() => setStep("login")}
       />
     );
   }
