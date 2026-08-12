@@ -36,6 +36,16 @@ function isPastOrToday(isoDate: string): boolean {
   return isoDate.slice(0, 10) <= new Date().toISOString().slice(0, 10);
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowIsoDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 // `new Date(isoString).toLocaleDateString()` re-introduces the same
 // UTC-vs-local shift as the write side did — the stored value is correct
 // UTC midnight, but formatting it via the browser's local timezone can
@@ -402,6 +412,14 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [editingStartDateId, setEditingStartDateId] = useState<string | null>(null);
   const [editingStartDateValue, setEditingStartDateValue] = useState('');
 
+  // Tracks a course being moved directly to a different section (In
+  // Progress / Upcoming / Completed) via the section move buttons, and —
+  // when moving into Upcoming specifically — the inline date picker needed
+  // to supply the future start date that section requires.
+  const [movingResourceId, setMovingResourceId] = useState<string | null>(null);
+  const [movingToUpcomingId, setMovingToUpcomingId] = useState<string | null>(null);
+  const [movingToUpcomingValue, setMovingToUpcomingValue] = useState('');
+
   /**
    * Removes a course from the profile by setting its status to "Cancelled"
    * rather than deleting the profile_resource row — this preserves history
@@ -511,6 +529,42 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       setCompletingResourceId(null);
     }
   }, [profileId, loadProfileResources, router]);
+
+  /**
+   * Moves a course directly into a different section by setting its status
+   * (and, when moving into Upcoming, a future startDate — the only way to
+   * land in that bucket, see isPastOrToday above). Lets a course be
+   * reclassified without waiting for or backdating its actual dates.
+   */
+  const handleMoveCourseStatus = useCallback(async (resourceId: string, statusId: number, startDate?: string) => {
+    setMovingResourceId(resourceId);
+    try {
+      const params = new URLSearchParams({ resourceId, statusId: String(statusId) });
+      if (startDate) params.set('startDate', startDate);
+      const response = await fetch(`/api/profiles/${profileId}/resources?${params.toString()}`, { method: "PUT" });
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      setMovingToUpcomingId(null);
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setMovingResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
+
+  /**
+   * Moves a course to In Progress. If it doesn't already have a startDate
+   * that's today or earlier, sets one to today so it actually lands in the
+   * In Progress bucket rather than Upcoming.
+   */
+  const handleMoveToInProgress = useCallback((course: ProfileResourceApiItem) => {
+    const alreadyStarted = Boolean(course.startDate) && isPastOrToday(course.startDate!);
+    void handleMoveCourseStatus(course.resource_id, IN_PROGRESS_STATUS_ID, alreadyStarted ? undefined : todayIsoDate());
+  }, [handleMoveCourseStatus]);
 
   /**
    * Retrieves a YouTube video for each skill associated with the profile's
@@ -791,7 +845,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
    * end-date editor, and Remove/Complete confirmations stay in sync in one
    * place instead of being duplicated per section.
    */
-  function renderCourseCard(course: ProfileResourceApiItem, opts: { showProgress: boolean; showCompleteButton: boolean }) {
+  function renderCourseCard(course: ProfileResourceApiItem, opts: { showProgress: boolean; currentSection: 'in-progress' | 'upcoming' }) {
     const isHov = hoveredItem === `course-${course.id}`;
     const name = course.resource?.name ?? `Resource ${course.resource_id}`;
     const title = course.resource?.courses
@@ -799,6 +853,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       : name;
     const isEditingEndDate = editingEndDateId === course.resource_id;
     const isEditingStartDate = editingStartDateId === course.resource_id;
+    const isMovingToUpcoming = movingToUpcomingId === course.resource_id;
     const showBar = opts.showProgress && Boolean(course.startDate) && Boolean(course.expectedEndDate);
     const progressPercent = showBar ? courseProgressPercent(course.startDate!, course.expectedEndDate!) : null;
 
@@ -936,16 +991,60 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
           </div>
         )}
 
-        {opts.showCompleteButton && (
-          <button
-            onClick={() => setCompleteConfirmTarget({ resourceId: course.resource_id, title })}
-            disabled={completingResourceId === course.resource_id}
-            className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-            style={{ backgroundColor: '#02746f', color: '#ffffff' }}
-          >
-            <CheckCircle className="w-3.5 h-3.5" />
-            {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
-          </button>
+        {isMovingToUpcoming ? (
+          <div className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
+            <span>Start date:</span>
+            <DatePicker
+              value={movingToUpcomingValue}
+              onChange={setMovingToUpcomingValue}
+              minDate={tomorrowIsoDate()}
+              placeholder="Start date"
+            />
+            <button
+              onClick={() => movingToUpcomingValue && handleMoveCourseStatus(course.resource_id, IN_PROGRESS_STATUS_ID, movingToUpcomingValue)}
+              disabled={!movingToUpcomingValue || movingResourceId === course.resource_id}
+              className="font-medium disabled:opacity-50"
+              style={{ color: '#02746f' }}
+            >
+              Save
+            </button>
+            <button onClick={() => setMovingToUpcomingId(null)} style={{ color: '#55371e' }}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setCompleteConfirmTarget({ resourceId: course.resource_id, title })}
+              disabled={completingResourceId === course.resource_id}
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+              style={{ backgroundColor: '#02746f', color: '#ffffff' }}
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
+            </button>
+            {opts.currentSection === 'in-progress' ? (
+              <button
+                onClick={() => {
+                  setMovingToUpcomingId(course.resource_id);
+                  setMovingToUpcomingValue('');
+                }}
+                className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors hover:bg-black/5"
+                style={{ color: '#55371e' }}
+              >
+                Move to Upcoming
+              </button>
+            ) : (
+              <button
+                onClick={() => handleMoveToInProgress(course)}
+                disabled={movingResourceId === course.resource_id}
+                className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors hover:bg-black/5 disabled:opacity-50"
+                style={{ color: '#55371e' }}
+              >
+                Move to In Progress
+              </button>
+            )}
+          </div>
         )}
       </div>
     );
@@ -1644,7 +1743,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                   <p className="text-xs" style={{ color: '#55371e' }}>No courses in progress yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, showCompleteButton: true }))}
+                    {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, currentSection: 'in-progress' }))}
                   </div>
                 )}
               </div>
@@ -1659,7 +1758,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                   <p className="text-xs" style={{ color: '#55371e' }}>No upcoming courses yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, showCompleteButton: false }))}
+                    {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, currentSection: 'upcoming' }))}
                   </div>
                 )}
               </div>
@@ -1741,6 +1840,49 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                             )}
                         </div>
                         <ResourceSkillBadges resource={course.resource} className="mt-2" />
+                        {movingToUpcomingId === course.resource_id ? (
+                          <div className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
+                            <span>Start date:</span>
+                            <DatePicker
+                              value={movingToUpcomingValue}
+                              onChange={setMovingToUpcomingValue}
+                              minDate={tomorrowIsoDate()}
+                              placeholder="Start date"
+                            />
+                            <button
+                              onClick={() => movingToUpcomingValue && handleMoveCourseStatus(course.resource_id, IN_PROGRESS_STATUS_ID, movingToUpcomingValue)}
+                              disabled={!movingToUpcomingValue || movingResourceId === course.resource_id}
+                              className="font-medium disabled:opacity-50"
+                              style={{ color: '#02746f' }}
+                            >
+                              Save
+                            </button>
+                            <button onClick={() => setMovingToUpcomingId(null)} style={{ color: '#55371e' }}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-3 flex items-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => handleMoveToInProgress(course)}
+                              disabled={movingResourceId === course.resource_id}
+                              className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors hover:bg-black/5 disabled:opacity-50"
+                              style={{ color: '#55371e' }}
+                            >
+                              Move to In Progress
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMovingToUpcomingId(course.resource_id);
+                                setMovingToUpcomingValue('');
+                              }}
+                              className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors hover:bg-black/5"
+                              style={{ color: '#55371e' }}
+                            >
+                              Move to Upcoming
+                            </button>
+                          </div>
+                        )}
                         {hasDetails && (
                           <button
                             onClick={() => setExpandedItem(isOpen ? null : key)}
