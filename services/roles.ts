@@ -126,6 +126,7 @@ export async function getLandscapeRoles() {
                 name: item.skills!.name as string,
                 weight: item.count,
                 score: null,
+                comment: null,
               }),
             ),
           },
