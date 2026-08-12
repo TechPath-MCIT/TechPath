@@ -1635,30 +1635,34 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
           {profileSection === 'courses' && (
             <div className="space-y-6">
               {/* In Progress */}
-              {inProgressCourses.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
-                    <Clock className="w-4 h-4" style={{ color: '#02746f' }} />
-                    In Progress Courses
-                  </h3>
+              <div>
+                <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
+                  <Clock className="w-4 h-4" style={{ color: '#02746f' }} />
+                  In Progress Courses
+                </h3>
+                {inProgressCourses.length === 0 ? (
+                  <p className="text-xs" style={{ color: '#55371e' }}>No courses in progress yet.</p>
+                ) : (
                   <div className="space-y-2">
                     {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, showCompleteButton: true }))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Upcoming — courses added with a future start date */}
-              {upcomingCourses.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
-                    <Calendar className="w-4 h-4" style={{ color: '#02746f' }} />
-                    Upcoming Courses
-                  </h3>
+              <div>
+                <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#02746f' }} />
+                  Upcoming Courses
+                </h3>
+                {upcomingCourses.length === 0 ? (
+                  <p className="text-xs" style={{ color: '#55371e' }}>No upcoming courses yet.</p>
+                ) : (
                   <div className="space-y-2">
                     {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, showCompleteButton: false }))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-3">
