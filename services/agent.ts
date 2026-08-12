@@ -11,6 +11,7 @@ import * as match from '@/services/match';
 import * as jobsSvc from '@/services/jobs';
 import * as skillRatings from '@/services/skillRatings';
 import { rateSkillProficiencies } from '@/app/actions/skillProficiency';
+import * as onetSvc from '@/services/onet';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -73,6 +74,8 @@ function buildSystemPrompt(context: AgentProfileContext): string {
     "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
     "Use get_skill_proficiency when the user asks how strong, how good, or how ready they are on a role's skills — it's a deeper, AI-rated 1-10 score with a rationale per skill, versus get_skill_gaps' plain have/missing split. Mention the rationale when it adds useful context, and be upfront that these scores are AI estimates based on their resume, not a certified assessment.",
+    "find_onet_technologies calls a real external API with an unknown rate limit, so only call it when the user specifically asks about tools/technologies (cloud platforms, BI tools, ML frameworks, dev tools like AWS, Docker, Tableau, TensorFlow) rather than on every skill or role question — our own skill catalog (used by get_skill_gaps and get_skill_proficiency) only covers coding languages, web frameworks, and databases, so this is the only source for anything outside those three categories. Never mention 'O*NET' by name to the user — it's just an internal data source, not something they need to know about; if it returns unavailable for a role, don't dead-end there and don't just offer to help further — immediately call get_skill_gaps and/or get_role_details in that same turn and include their results in your reply, so the user gets real information about the role right away instead of having to ask again.",
+    "get_skill_gaps and find_onet_technologies are complementary, not interchangeable — get_skill_gaps is a personalized readiness check (does the user specifically have these skills), find_onet_technologies is a broader industry-landscape check (what tools the market wants for this role generally), and they never return overlapping items. For a broad question like \"what should I know for this role\" or \"what skills/technologies do I need,\" call both in the same turn and present one combined reply with two clearly labeled sections — e.g. \"Your skill gaps\" (from get_skill_gaps) and \"Other in-demand tools\" (from find_onet_technologies) — rather than picking just one and leaving the other half of the picture out.",
     "You can't fetch YouTube videos yourself, but the Grind page already shows a personalized YouTube video for each skill in the user's target role. When discussing how to learn a skill, mention they can find a video for it on the Grind page alongside the course(s) from find_mcit_courses_for_skill — don't claim to find or list specific videos yourself. If find_mcit_courses_for_skill returns success: false, say plainly that there's no MCIT course for that skill in the catalog, and that they may find a YouTube video for it on the Grind page — don't invent a course or video as a substitute.",
     "Always check a tool's result before describing what happened. If it reports success: false, or lists any names under fields like notFound, notInCatalog, or notOnProfile, tell the user honestly what did and didn't work — never claim something was added, removed, or changed if the tool result says otherwise.",
     "After a successful profile update, always start your reply with a clear, explicit confirmation of exactly what changed (e.g. \"I've updated your target role to Front-End Developer.\") before adding any advice, skill-gap analysis, or commentary. Don't jump straight into advice without confirming the change first — the user needs to know the action actually happened.",
@@ -657,6 +660,50 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
           liveJobs: liveJobs ?? [],
           liveJobsUnavailable: liveJobs === null,
         };
+      },
+    }),
+    find_onet_technologies: tool({
+      description:
+        "Find the specific tools and technologies (cloud platforms, BI tools, ML frameworks, dev tools, etc.) most commonly requested in real job postings for a role, sourced from O*NET, ranked by how often they appear. This covers technologies outside our own skill catalog (which only tracks coding languages, web frameworks, and databases) — use it when the user asks what tools/technologies to learn for a role, or asks about something like AWS, Docker, Tableau, or similar tools not covered by get_skill_gaps. Not available for every role (e.g. Product Manager has no good O*NET match) — if it returns unavailable, say so honestly rather than guessing.",
+      inputSchema: z.object({
+        roleId: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'The numeric id of the role to look up, from the available roles list. Defaults to the target role already on the profile if omitted.',
+          ),
+      }),
+      execute: async ({ roleId }) => {
+        let resolvedRoleId = roleId;
+        if (resolvedRoleId == null) {
+          const profile = await profiles.getProfileById(profileId);
+          resolvedRoleId = profile?.roleId ?? undefined;
+        }
+        if (resolvedRoleId == null) {
+          return { success: false, error: 'No role was specified and the user has not set a target role yet.' };
+        }
+
+        const role = availableRoles.find((candidate) => candidate.roleId === resolvedRoleId);
+        if (!role) {
+          return { success: false, error: `${resolvedRoleId} is not a valid role id.` };
+        }
+
+        try {
+          const technologies = await onetSvc.getInDemandTechnologies(resolvedRoleId, 10);
+          if (technologies === null) {
+            return {
+              success: false,
+              error: `No specific tools/technologies data is available for ${role.name}.`,
+            };
+          }
+          return { success: true, roleName: role.name, technologies };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to look up in-demand technologies.',
+          };
+        }
       },
     }),
   };

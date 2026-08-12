@@ -10,6 +10,15 @@ export async function GET(request: NextRequest) {
       types.length === 0 ? undefined : types.length === 1 ? types[0] : types;
     const source = request.nextUrl.searchParams.get("source") ?? undefined;
 
+    const roleIdParam = request.nextUrl.searchParams.get("roleId");
+    const roleId = roleIdParam === null ? undefined : Number(roleIdParam);
+    if (roleId !== undefined && !Number.isInteger(roleId)) {
+      return NextResponse.json(
+        { success: false, error: "roleId must be an integer." },
+        { status: 400 },
+      );
+    }
+
     const limitParam = request.nextUrl.searchParams.get("limit");
     const limit = limitParam === null ? 50 : Number(limitParam);
 
@@ -27,6 +36,7 @@ export async function GET(request: NextRequest) {
       type,
       source,
       limit,
+      roleId,
     });
 
     return NextResponse.json(

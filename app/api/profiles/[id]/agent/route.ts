@@ -11,6 +11,12 @@ interface RouteContext {
     params: Promise<{ id: string }>
 }
 
+// Caps how many prior messages get resent to the model each turn, so a
+// long-running conversation doesn't grow the request (and cost/latency)
+// without bound. The full conversation is still persisted in the DB
+// regardless — see fullHistory vs history below.
+const MAX_HISTORY_MESSAGES = 20;
+
 function isChatMessage(entry: unknown): entry is ChatMessage {
     if (typeof entry !== 'object' || entry === null) return false;
 
@@ -85,7 +91,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         const conversationId = Number.isInteger(data.conversationId) ? Number(data.conversationId) : null;
-        const history: ChatMessage[] = Array.isArray(data.history) ? data.history.filter(isChatMessage) : [];
+        const fullHistory: ChatMessage[] = Array.isArray(data.history) ? data.history.filter(isChatMessage) : [];
+        // Caps what gets sent to the model each turn so a long-running
+        // conversation doesn't grow the request (and cost/latency) forever —
+        // older messages are dropped, not summarized, so very old context
+        // is lost rather than condensed. The full history still stays in
+        // the DB either way; this only bounds what's resent per turn.
+        const history = fullHistory.slice(-MAX_HISTORY_MESSAGES);
 
         const profile = await profiles.getProfileById(profile_id);
         if (!profile) {
@@ -164,7 +176,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
                     const now = new Date().toISOString();
                     const updatedHistory: ChatMessage[] = [
-                        ...history,
+                        ...fullHistory,
                         { role: 'user', content: message, timestamp: now },
                         { role: 'assistant', content: reply, timestamp: now },
                     ];

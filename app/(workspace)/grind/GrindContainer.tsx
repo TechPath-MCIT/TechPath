@@ -63,8 +63,13 @@ export default function GrindContainer() {
         setIsLoadingResources(true);
         setResourcesError(null);
 
+        const roleIdParam =
+          profile.targetRole?.roleId != null
+            ? `&roleId=${profile.targetRole.roleId}`
+            : "";
+
         const [mcitResponse, outsideResponse] = await Promise.all([
-          fetch("/api/resources?type=course&source=MCIT&limit=100", {
+          fetch(`/api/resources?type=course&source=MCIT&limit=100${roleIdParam}`, {
             method: "GET",
             signal: controller.signal,
           }),
@@ -118,7 +123,7 @@ export default function GrindContainer() {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [profile.targetRole?.roleId]);
 
   return (
     <div
