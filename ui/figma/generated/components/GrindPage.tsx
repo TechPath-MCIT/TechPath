@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import {
   BookOpen, Calendar, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
@@ -1435,9 +1437,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
               </p>
             )}
             {agentUpdateReply && (
-              <p className="text-xs p-2 rounded" style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}>
-                {agentUpdateReply}
-              </p>
+              <div
+                className="text-xs p-2 rounded leading-relaxed space-y-2 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0 [&_a]:text-[#02746f] [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:opacity-70"
+                style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}
+              >
+                <ReactMarkdown remarkPlugins={[remarkBreaks]}>{agentUpdateReply}</ReactMarkdown>
+              </div>
             )}
             <div className="flex gap-2">
               <button
