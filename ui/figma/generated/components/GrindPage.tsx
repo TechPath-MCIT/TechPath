@@ -34,6 +34,17 @@ function isPastOrToday(isoDate: string): boolean {
   return isoDate.slice(0, 10) <= new Date().toISOString().slice(0, 10);
 }
 
+// `new Date(isoString).toLocaleDateString()` re-introduces the same
+// UTC-vs-local shift as the write side did — the stored value is correct
+// UTC midnight, but formatting it via the browser's local timezone can
+// roll it back a calendar day. Extract the date components directly and
+// build a local Date from them (same fix pattern as the API route, and the
+// same approach DatePicker.tsx already uses for its own display).
+function formatIsoDateLocal(isoDate: string): string {
+  const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString();
+}
+
 function courseProgressPercent(startDate: string, endDate: string): number {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
@@ -760,16 +771,16 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         {(course.startDate || course.expectedEndDate) && (
           <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
             <span>
-              {course.startDate ? new Date(course.startDate).toLocaleDateString() : '—'}
+              {course.startDate ? formatIsoDateLocal(course.startDate) : '—'}
               {' – '}
-              {isEditingEndDate ? '' : course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
+              {isEditingEndDate ? '' : course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}
             </span>
             {isEditingEndDate ? (
               <>
                 <DatePicker
                   value={editingEndDateValue}
                   onChange={setEditingEndDateValue}
-                  minDate={course.startDate ?? undefined}
+                  minDate={course.startDate ? course.startDate.slice(0, 10) : undefined}
                   placeholder="End date"
                 />
                 <button
@@ -788,7 +799,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
               <button
                 onClick={() => {
                   setEditingEndDateId(course.resource_id);
-                  setEditingEndDateValue(course.expectedEndDate ?? '');
+                  setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
                 }}
                 title="Update end date"
                 className="p-0.5 rounded hover:bg-black/5"
@@ -1596,7 +1607,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                           </button>
                         </div>
                         {course.expectedEndDate && (
-                          <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
+                          <div className="text-xs" style={{ color: '#55371e' }}>Completed: {formatIsoDateLocal(course.expectedEndDate)}</div>
                         )}
                         <ResourceSkillBadges resource={course.resource} className="mt-2" />
                         {hasDetails && (
