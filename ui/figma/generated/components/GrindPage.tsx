@@ -1109,7 +1109,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search"
+                placeholder="Search MCIT courses…"
                 className="w-full pl-9 pr-8 py-2 rounded-lg text-sm border outline-none"
                 style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
               />
