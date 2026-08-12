@@ -20,6 +20,33 @@ const google = createGoogleGenerativeAI({
 // resource_status.status_id convention — matches GrindPage.tsx.
 const IN_PROGRESS_STATUS_ID = 1;
 const COMPLETED_STATUS_ID = 2;
+const CANCELLED_STATUS_ID = 0;
+
+// `new Date("YYYY-MM-DD")` parses as UTC midnight, which reads back one
+// calendar day earlier on a server running behind UTC — same fix as the
+// resources API route and GrindPage.tsx use for the same reason.
+function parseIsoDateLocal(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Matches a free-text course query (e.g. "CIT5960", "Algorithms & Computation",
+// or the model's own combined "CIT5960 - Algorithms & Computation") against a
+// course's name and code. Checked in both directions — plain .includes(query)
+// alone misses combined code+name queries, since neither field individually
+// contains the full combined string.
+function courseNameMatches(query: string, name: string, courseId: string | null | undefined): boolean {
+  const normalizedName = name.toLowerCase();
+  const normalizedCode = courseId?.toLowerCase();
+
+  const nameMatches = normalizedName.includes(query) || query.includes(normalizedName);
+  const codeMatches = normalizedCode !== undefined && (normalizedCode.includes(query) || query.includes(normalizedCode));
+
+  return nameMatches || codeMatches;
+}
 
 export interface AgentAvailableRole {
   roleId: number;
@@ -42,8 +69,12 @@ export interface AgentProfileContext {
 }
 
 function buildSystemPrompt(context: AgentProfileContext): string {
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   const lines = [
     "You are the TechPath AI Career Agent, a helpful assistant that helps users plan their career, close skill gaps, and find learning resources.",
+    `Today's date is ${todayIso}. Use this as the anchor for any relative date the user mentions (e.g. "next month", "in 3 weeks", "starting tomorrow") — never guess or invent a date, and never use a date from your own training data as "today."`,
     `The user's name is ${context.name}.`,
     context.currentRole ? `Their current role is ${context.currentRole}.` : null,
     context.location ? `They are based in ${context.location}.` : null,
@@ -69,7 +100,7 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise, encouraging, and actionable. Suggest concrete next steps or resources when relevant.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, add_project, remove_project, and mark_course_status tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, remove_work_experience, add_project, remove_project, mark_course_status, and remove_course tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
@@ -240,6 +271,20 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         return { success: true, company, title };
       },
     }),
+    remove_work_experience: tool({
+      description:
+        "Remove a work experience entry from the user's profile by company (optionally narrowed by job title, if they had more than one role there). Only call this when the user explicitly asks to remove a job from their profile.",
+      inputSchema: z.object({
+        company: z.string().describe('The company name of the entry to remove.'),
+        title: z.string().optional().describe('The job title, if needed to disambiguate multiple roles at the same company.'),
+      }),
+      execute: async ({ company, title }) => {
+        const removed = await profiles.removeWorkExperience(profileId, company, title);
+        return removed
+          ? { success: true, company, title }
+          : { success: false, error: `No work experience entry found at "${company}"${title ? ` with title "${title}"` : ''}.` };
+      },
+    }),
     add_project: tool({
       description:
         "Add a new project to the user's profile — e.g. when they mention something they built or worked on outside a job. Only call this when the user explicitly describes a project they want added.",
@@ -269,22 +314,28 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
     }),
     mark_course_status: tool({
       description:
-        "Mark an MCIT course as in progress or completed for the user. Only call this when the user explicitly says they've started or finished a specific course by name. Completing a course also adds the skills it teaches to the user's profile.",
+        "Add or update an MCIT course on the user's profile — in progress or completed, with optional start/end dates, exactly like the Add dialog and pencil-edit on the Grind page. Only call this when the user explicitly says they've started, are planning to take, or finished a specific course by name. There's no separate 'upcoming' status and no separate 'move to upcoming' action — calling this with status: 'in_progress' and a future startDate is how a course (new OR already-tracked) shows under Upcoming instead of In Progress; calling it again on a course already on the profile updates its dates/status in place rather than erroring. If the user specifically asks to mark or move a course to 'upcoming' but hasn't given a date, ask them for the start date instead of guessing or inventing one — do not call this tool until you have a real date for that case. Completing a course also adds the skills it teaches to the user's profile.",
       inputSchema: z.object({
         courseName: z
           .string()
           .describe('The course name or code the user mentioned, e.g. "Networked Systems" or "CIS5530".'),
         status: z
           .enum(['in_progress', 'complete'])
-          .describe('Whether the user started the course or finished it.'),
+          .describe('Whether the user started/is planning the course, or already finished it.'),
+        startDate: z
+          .string()
+          .optional()
+          .describe('Start date as YYYY-MM-DD, if the user mentions or confirms one. A future date puts it under Upcoming instead of In Progress.'),
+        endDate: z
+          .string()
+          .optional()
+          .describe('Expected end date as YYYY-MM-DD, if the user mentions one. If startDate is given without this, it defaults the same way the Add dialog does (14 weeks out for a full course, 7 for a half-unit course).'),
       }),
-      execute: async ({ courseName, status }) => {
+      execute: async ({ courseName, status, startDate, endDate }) => {
         const allCourses = await resourcesSvc.getResources({ type: 'course', limit: 200 });
         const query = courseName.trim().toLowerCase();
-        const matches = allCourses.filter(
-          (resource) =>
-            resource.name.toLowerCase().includes(query) ||
-            (resource.course?.courseId.toLowerCase().includes(query) ?? false),
+        const matches = allCourses.filter((resource) =>
+          courseNameMatches(query, resource.name, resource.course?.courseId),
         );
 
         if (matches.length === 0) {
@@ -301,17 +352,96 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
 
         const course = matches[0];
 
+        const parsedStart = startDate ? parseIsoDateLocal(startDate) : null;
+        if (startDate && !parsedStart) {
+          return { success: false, error: `"${startDate}" isn't a valid date — use YYYY-MM-DD.` };
+        }
+
+        let parsedEnd = endDate ? parseIsoDateLocal(endDate) : null;
+        if (endDate && !parsedEnd) {
+          return { success: false, error: `"${endDate}" isn't a valid date — use YYYY-MM-DD.` };
+        }
+        if (parsedStart && !parsedEnd) {
+          // Same default the Add dialog uses: 14 weeks for a full course,
+          // 7 for a half-unit one.
+          const weeks = course.course?.units === 0.5 ? 7 : 14;
+          parsedEnd = new Date(parsedStart);
+          parsedEnd.setDate(parsedEnd.getDate() + weeks * 7);
+        }
+
+        const dates = parsedStart || parsedEnd
+          ? { startDate: parsedStart ?? undefined, expectedEndDate: parsedEnd ?? undefined }
+          : undefined;
+
         if (status === 'complete') {
           const { addedSkills } = await profiles.completeResourceForProfile(
             profileId,
             course.id,
             COMPLETED_STATUS_ID,
+            dates,
           );
-          return { success: true, courseName: course.name, status: 'complete', addedSkills };
+          return {
+            success: true,
+            courseName: course.name,
+            status: 'complete',
+            addedSkills,
+            startDate: parsedStart ? startDate : null,
+            expectedEndDate: parsedEnd ? parsedEnd.toISOString().slice(0, 10) : null,
+          };
         }
 
-        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID);
-        return { success: true, courseName: course.name, status: 'in_progress' };
+        // Explicitly marking something "in progress" means starting now — if
+        // no startDate was given, default it to today rather than leaving it
+        // untouched. Otherwise a course previously scheduled for a future
+        // date (Upcoming) would flip to "in progress" status while keeping
+        // its stale future date, so it'd still show under Upcoming — a
+        // status/section mismatch.
+        const inProgressStart = parsedStart ?? new Date();
+        const inProgressDates = { startDate: inProgressStart, expectedEndDate: parsedEnd ?? undefined };
+
+        await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, inProgressDates);
+        return {
+          success: true,
+          courseName: course.name,
+          status: 'in_progress',
+          startDate: inProgressStart.toISOString().slice(0, 10),
+          expectedEndDate: parsedEnd ? parsedEnd.toISOString().slice(0, 10) : null,
+        };
+      },
+    }),
+    remove_course: tool({
+      description:
+        "Remove an MCIT course from the user's My Progress list (In Progress, Upcoming, or Completed), exactly like the trash-icon button on the Grind page. Only call this when the user explicitly asks to remove or delete a specific course they're tracking — not for skills, projects, or anything not already added to their progress.",
+      inputSchema: z.object({
+        courseName: z
+          .string()
+          .describe('The course name or code the user wants removed, e.g. "Networked Systems" or "CIS5530".'),
+      }),
+      execute: async ({ courseName }) => {
+        const enrolled = await profiles.getResourcesByProfile(profileId);
+        const query = courseName.trim().toLowerCase();
+        const matches = enrolled.filter(
+          (item) =>
+            item.statusId !== CANCELLED_STATUS_ID &&
+            item.resource !== null &&
+            courseNameMatches(query, item.resource.name, item.resource.courses?.course_id),
+        );
+
+        if (matches.length === 0) {
+          return { success: false, error: `"${courseName}" isn't currently in the user's My Progress list.` };
+        }
+
+        if (matches.length > 1) {
+          return {
+            success: false,
+            error: `Multiple tracked courses match "${courseName}" — ask the user to be more specific.`,
+            candidates: matches.slice(0, 5).map((item) => item.resource?.name).filter(Boolean),
+          };
+        }
+
+        const match = matches[0];
+        await profiles.setResourceStatusForProfile(profileId, match.resource_id, CANCELLED_STATUS_ID);
+        return { success: true, courseName: match.resource?.name ?? courseName };
       },
     }),
     update_education: tool({
@@ -722,9 +852,11 @@ const MUTATION_TOOL_NAMES = new Set([
   'set_years_of_experience',
   'update_education',
   'add_work_experience',
+  'remove_work_experience',
   'add_project',
   'remove_project',
   'mark_course_status',
+  'remove_course',
 ]);
 
 /**

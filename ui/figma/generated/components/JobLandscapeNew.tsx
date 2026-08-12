@@ -412,7 +412,7 @@ export function JobLandscapeNew({
                             }}
                           />
                         </div>
-                        <div class = "flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                           <InfoButton
                               info = {skill.comment || ''}
                               hover = {true}

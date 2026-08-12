@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import {
   BookOpen, Calendar, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
@@ -362,6 +364,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
   const [removingResourceId, setRemovingResourceId] = useState<string | null>(null);
   const [updatingEndDateResourceId, setUpdatingEndDateResourceId] = useState<string | null>(null);
+  const [updatingStartDateResourceId, setUpdatingStartDateResourceId] = useState<string | null>(null);
 
   // The course pending a Remove or Complete confirmation, shown as a
   // centered ConfirmDialog rather than an inline banner — the old banner sat
@@ -373,6 +376,10 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // The resource currently showing an inline end-date editor, and its draft value.
   const [editingEndDateId, setEditingEndDateId] = useState<string | null>(null);
   const [editingEndDateValue, setEditingEndDateValue] = useState('');
+
+  // Same, for the start-date editor.
+  const [editingStartDateId, setEditingStartDateId] = useState<string | null>(null);
+  const [editingStartDateValue, setEditingStartDateValue] = useState('');
 
   /**
    * Removes a course from the profile by setting its status to "Cancelled"
@@ -424,6 +431,32 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       // Minimal handling: no-op on failure.
     } finally {
       setUpdatingEndDateResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
+
+  /**
+   * Same as handleUpdateEndDate, but for startDate — a course's start date
+   * also determines whether it shows under In Progress or Upcoming (a
+   * future date), so editing it can move the card between sections.
+   */
+  const handleUpdateStartDate = useCallback(async (resourceId: string, statusId: number, startDate: string) => {
+    setUpdatingStartDateResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${statusId}&startDate=${startDate}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      setEditingStartDateId(null);
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setUpdatingStartDateResourceId(null);
     }
   }, [profileId, loadProfileResources]);
 
@@ -580,8 +613,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       return next;
     });
   }, []);
-  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'experience' | 'projects'>('ongoing');
-  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const [profileSection, setProfileSection] = useState<'courses' | 'skills' | 'experience' | 'projects'>('courses');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showAgentInput, setShowAgentInput] = useState(false);
@@ -589,18 +621,17 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
   const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
   const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
+  // Threads Quick Update messages into one conversation (same pattern as the
+  // main Agent page) so a clarifying follow-up from the agent — "which course?"
+  // "start or end date?" — can actually be answered, instead of every message
+  // being a fresh, context-free request. Resets when the box is closed.
+  const quickUpdateConversationIdRef = useRef<number | null>(null);
+  const quickUpdateHistoryRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   // MCIT courses only — already ranked by relevance to the target role from
   // the API (see services/resources.ts), so no client-side re-sort here.
   const combinedResources: DisplayResource[] = resources
   .filter((resource) => !resource.isExternal)
-  .filter((resource) => {
-    // Once a course is added to My Progress (In Progress or Completed), it
-    // no longer needs to show up in the browsing list — a Cancelled/removed
-    // course still passes through here so it can be re-added.
-    const status = resourceStatusById.get(resource.id);
-    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
-  })
   .map(toDisplayResource)
   .filter((resource) => {
     const query = searchQuery.trim().toLowerCase();
@@ -610,6 +641,17 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       resource.title.toLowerCase().includes(query) ||
       resource.skills.some((skill) => skill.toLowerCase().includes(query))
     );
+  })
+  .filter((resource) => {
+    // Once a course is added to My Progress (In Progress or Completed), hide
+    // it from the passive browse list — a Cancelled/removed course still
+    // passes through so it can be re-added. But an active search is a
+    // deliberate lookup, not passive browsing, so let it still surface
+    // enrolled courses too (the Add button already shows their real status
+    // instead of "Add" in that case, so there's no ambiguity).
+    if (searchQuery.trim()) return true;
+    const status = resourceStatusById.get(resource.id);
+    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
   });
 
   // Coursera courses — kept as a separate, clearly-labeled "browse" section
@@ -640,7 +682,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       const response = await fetch(`/api/profiles/${profileId}/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          history: quickUpdateHistoryRef.current,
+          conversationId: quickUpdateConversationIdRef.current,
+        }),
       });
 
       if (!response.ok || !response.body) {
@@ -677,11 +723,18 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             setAgentUpdateReply(fullReply);
           } else if (event.type === "done") {
             profileUpdated = event.profileUpdated;
+            quickUpdateConversationIdRef.current = event.conversationId;
           } else if (event.type === "error") {
             throw new Error(event.error);
           }
         }
       }
+
+      quickUpdateHistoryRef.current = [
+        ...quickUpdateHistoryRef.current,
+        { role: 'user', content: message },
+        { role: 'assistant', content: fullReply },
+      ];
 
       setAgentInputText('');
 
@@ -724,6 +777,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       ? `${course.resource.courses.course_id} - ${name}`
       : name;
     const isEditingEndDate = editingEndDateId === course.resource_id;
+    const isEditingStartDate = editingStartDateId === course.resource_id;
     const showBar = opts.showProgress && Boolean(course.startDate) && Boolean(course.expectedEndDate);
     const progressPercent = showBar ? courseProgressPercent(course.startDate!, course.expectedEndDate!) : null;
 
@@ -744,9 +798,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             {progressPercent !== null ? (
               <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{progressPercent}%</span>
             ) : (
-              course.status?.status && (
-                <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{course.status.status}</span>
-              )
+              // There's no separate "Upcoming" status in the DB — it's the
+              // same In Progress statusId, just grouped by date. The raw
+              // status text would say "In Progress" even in the Upcoming
+              // section, so label it from which section it's actually in.
+              <span className="text-xs font-semibold" style={{ color: '#02746f' }}>
+                {opts.showProgress ? course.status?.status : 'Upcoming'}
+              </span>
             )}
             <button
               onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
@@ -769,12 +827,44 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         )}
 
         {(course.startDate || course.expectedEndDate) && (
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
-            <span>
-              {course.startDate ? formatIsoDateLocal(course.startDate) : '—'}
-              {' – '}
-              {isEditingEndDate ? '' : course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}
-            </span>
+          <div className="flex items-center gap-1.5 text-xs flex-wrap" style={{ color: '#55371e' }}>
+            {isEditingStartDate ? (
+              <>
+                <DatePicker
+                  value={editingStartDateValue}
+                  onChange={setEditingStartDateValue}
+                  placeholder="Start date"
+                />
+                <button
+                  onClick={() => editingStartDateValue && handleUpdateStartDate(course.resource_id, course.statusId, editingStartDateValue)}
+                  disabled={!editingStartDateValue || updatingStartDateResourceId === course.resource_id}
+                  className="font-medium disabled:opacity-50"
+                  style={{ color: '#02746f' }}
+                >
+                  Save
+                </button>
+                <button onClick={() => setEditingStartDateId(null)} style={{ color: '#55371e' }}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span>{course.startDate ? formatIsoDateLocal(course.startDate) : '—'}</span>
+                <button
+                  onClick={() => {
+                    setEditingStartDateId(course.resource_id);
+                    setEditingStartDateValue(course.startDate ? course.startDate.slice(0, 10) : '');
+                  }}
+                  title="Update start date"
+                  className="p-0.5 rounded hover:bg-black/5"
+                >
+                  <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+                </button>
+              </>
+            )}
+
+            <span>–</span>
+
             {isEditingEndDate ? (
               <>
                 <DatePicker
@@ -796,16 +886,19 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => {
-                  setEditingEndDateId(course.resource_id);
-                  setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
-                }}
-                title="Update end date"
-                className="p-0.5 rounded hover:bg-black/5"
-              >
-                <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
-              </button>
+              <>
+                <span>{course.expectedEndDate ? formatIsoDateLocal(course.expectedEndDate) : '—'}</span>
+                <button
+                  onClick={() => {
+                    setEditingEndDateId(course.resource_id);
+                    setEditingEndDateValue(course.expectedEndDate ? course.expectedEndDate.slice(0, 10) : '');
+                  }}
+                  title="Update end date"
+                  className="p-0.5 rounded hover:bg-black/5"
+                >
+                  <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+                </button>
+              </>
             )}
           </div>
         )}
@@ -1421,7 +1514,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             <textarea
               value={agentInputText}
               onChange={e => setAgentInputText(e.target.value)}
-              placeholder="Tell the AI what to update... e.g., 'I finished the Networked Systems course' or 'Add a project called Chess Engine' or 'Add AWS to my skills'"
+              placeholder="Tell the AI what to update — it can add or remove Courses, Skills, Experience, and Projects below"
               disabled={isSendingAgentUpdate}
               className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
               style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
@@ -1432,9 +1525,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
               </p>
             )}
             {agentUpdateReply && (
-              <p className="text-xs p-2 rounded" style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}>
-                {agentUpdateReply}
-              </p>
+              <div
+                className="text-xs p-2 rounded leading-relaxed space-y-2 [&_p]:m-0 [&_ul]:m-0 [&_ul]:pl-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:m-0 [&_ol]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:m-0 [&_a]:text-[#02746f] [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:opacity-70"
+                style={{ color: '#15100c', backgroundColor: 'rgba(2, 116, 111, 0.08)' }}
+              >
+                <ReactMarkdown remarkPlugins={[remarkBreaks]}>{agentUpdateReply}</ReactMarkdown>
+              </div>
             )}
             <div className="flex gap-2">
               <button
@@ -1454,6 +1550,8 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                   setShowAgentInput(false);
                   setAgentUpdateReply(null);
                   setAgentUpdateError(null);
+                  quickUpdateConversationIdRef.current = null;
+                  quickUpdateHistoryRef.current = [];
                 }}
                 disabled={isSendingAgentUpdate}
                 className="px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
@@ -1467,16 +1565,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
         {/* Profile Tabs */}
         <div className="flex border-b px-6" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
-          <button
-            onClick={() => setProfileSection('ongoing')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'ongoing' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'ongoing' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Ongoing
-          </button>
           <button
             onClick={() => setProfileSection('courses')}
             className="px-3 py-2.5 text-sm font-medium transition-colors"
@@ -1520,15 +1608,17 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Ongoing Tab */}
-          {profileSection === 'ongoing' && (
+          {/* Courses Tab — In Progress, Upcoming, and Completed together,
+              since they're all just different statuses of the same
+              underlying enrolled-course list. */}
+          {profileSection === 'courses' && (
             <div className="space-y-6">
               {/* In Progress */}
               {inProgressCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Clock className="w-4 h-4" style={{ color: '#02746f' }} />
-                    In Progress
+                    In Progress Courses
                   </h3>
                   <div className="space-y-2">
                     {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, showCompleteButton: true }))}
@@ -1536,50 +1626,31 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 </div>
               )}
 
-              {inProgressCourses.length === 0 && upcomingCourses.length === 0 && (
-                <p className="text-xs" style={{ color: '#55371e' }}>Nothing in progress yet.</p>
-              )}
-
-              {/* Upcoming Events — courses added with a future start date */}
+              {/* Upcoming — courses added with a future start date */}
               {upcomingCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Calendar className="w-4 h-4" style={{ color: '#02746f' }} />
-                    Upcoming Events
+                    Upcoming Courses
                   </h3>
                   <div className="space-y-2">
                     {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, showCompleteButton: false }))}
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Courses Tab */}
-          {profileSection === 'courses' && (
-            <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold flex items-center gap-2" style={{ color: '#15100c' }}>
                     <CheckCircle className="w-4 h-4" style={{ color: '#02746f' }} />
                     Completed Courses
                   </h3>
-                  {completedCourses.length > 2 && (
-                    <button
-                      onClick={() => setShowAllCompleted(!showAllCompleted)}
-                      className="text-xs font-medium flex items-center gap-1"
-                      style={{ color: '#02746f' }}
-                    >
-                      {showAllCompleted ? 'Show Less' : `View All (${completedCourses.length})`}
-                      {showAllCompleted ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-                  )}
                 </div>
                 {completedCourses.length === 0 ? (
                   <p className="text-xs" style={{ color: '#55371e' }}>No completed courses yet.</p>
                 ) : (
                 <div className="space-y-2">
-                  {(showAllCompleted ? completedCourses : completedCourses.slice(0, 2)).map(course => {
+                  {completedCourses.map(course => {
                     const name = course.resource?.name ?? `Resource ${course.resource_id}`;
                     const title = course.resource?.courses
                       ? `${course.resource.courses.course_id} - ${name}`
