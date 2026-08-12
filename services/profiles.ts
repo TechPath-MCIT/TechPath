@@ -413,15 +413,31 @@ export async function getResourcesByProfile(profile_ID: number, statusId?: numbe
     });
 }
 
+export interface ResourceDateUpdates {
+    startDate?: Date | null;
+    expectedEndDate?: Date | null;
+}
+
 /**
  * Sets the status of a resource for a profile. If a profile_resource row
  * already exists for this (profile, resource) pair, its status is updated;
  * otherwise a new row is inserted.
+ *
+ * `dates`, when given, are written alongside the status (used when enrolling
+ * with a start/end date, or when only updating the end date). Omitting a key
+ * — or omitting `dates` entirely — leaves that date column untouched, so
+ * completing or cancelling a resource doesn't erase its enrollment dates.
  * @param profile_ID the profile the resource belongs to
  * @param resource_id the resource to set status for
  * @param statusId the resource_status.status_id to set
+ * @param dates optional startDate/expectedEndDate to write alongside the status
  */
-export async function setResourceStatusForProfile(profile_ID: number, resource_id: string, statusId: number) {
+export async function setResourceStatusForProfile(
+    profile_ID: number,
+    resource_id: string,
+    statusId: number,
+    dates?: ResourceDateUpdates,
+) {
     const statusRow = await prisma.resource_status.findUnique({
         where: { status_id: statusId },
         select: { status_id: true },
@@ -430,6 +446,10 @@ export async function setResourceStatusForProfile(profile_ID: number, resource_i
     if (!statusRow) {
         throw new Error(`Unknown resource status id: ${statusId}`);
     }
+
+    const dateFields: ResourceDateUpdates = {};
+    if (dates?.startDate !== undefined) dateFields.startDate = dates.startDate;
+    if (dates?.expectedEndDate !== undefined) dateFields.expectedEndDate = dates.expectedEndDate;
 
     const existing = await prisma.profile_resource.findFirst({
         where: {
@@ -442,7 +462,7 @@ export async function setResourceStatusForProfile(profile_ID: number, resource_i
     if (existing) {
         return prisma.profile_resource.update({
             where: { id: existing.id },
-            data: { statusId },
+            data: { statusId, ...dateFields },
         });
     }
 
@@ -451,6 +471,7 @@ export async function setResourceStatusForProfile(profile_ID: number, resource_i
             profile_id: profile_ID,
             resource_id,
             statusId,
+            ...dateFields,
         },
     });
 }

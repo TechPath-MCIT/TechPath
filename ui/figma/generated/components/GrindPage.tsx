@@ -1,11 +1,13 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  BookOpen, Calendar, Award, Briefcase,
+  BookOpen, Calendar, Briefcase,
   FileText, CheckCircle, Clock, DollarSign, ExternalLink,
-  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Search, X
+  ChevronDown, ChevronUp, Edit3, Send, Sparkles, Search, X, Trash2, Pencil
 } from 'lucide-react';
-import { sampleUserProfile } from "../data/learningResources";
+import { AddResourceDialog } from "./AddResourceDialog";
+import { DatePicker } from "./DatePicker";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // Virtual resource source for YouTube videos fetched per target-role skill.
 const YOUTUBE_SOURCE = "YouTube";
@@ -15,6 +17,30 @@ const IN_PROGRESS_STATUS_ID = 1;
 
 // resource_status.status_id that represents a "Complete" resource.
 const COMPLETED_STATUS_ID = 2;
+
+// resource_status.status_id that represents a removed ("Cancelled") resource.
+// Reusing the existing status (rather than deleting the row) means a removed
+// course simply stops matching the In Progress/Completed filters below and
+// its Add button in the Resources list re-enables — no extra plumbing needed.
+const CANCELLED_STATUS_ID = 0;
+
+function isPastOrToday(isoDate: string): boolean {
+  // isoDate may come back from the API as a full timestamp
+  // ("2026-08-12T00:00:00.000Z") rather than a bare date — comparing that
+  // directly against today's date-only string always sorts it as "later"
+  // (a longer string with a matching prefix is lexicographically greater),
+  // so a course starting exactly today was always misclassified as
+  // upcoming. Normalize both sides to the date-only portion first.
+  return isoDate.slice(0, 10) <= new Date().toISOString().slice(0, 10);
+}
+
+function courseProgressPercent(startDate: string, endDate: string): number {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const now = Date.now();
+  if (end <= start) return 100;
+  return Math.max(0, Math.min(100, Math.round(((now - start) / (end - start)) * 100)));
+}
 
 interface ProfileResourceApiItem {
   id: number;
@@ -252,13 +278,25 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     };
   }, [loadProfileResources]);
 
-  // Course pairings split by status, derived from the unified list.
+  // Course pairings split by status, derived from the unified list. "In
+  // Progress" courses are further split into ones that have actually started
+  // (startDate is today or earlier — or unset, treated as already started)
+  // vs. ones scheduled to start in the future, which render under Upcoming
+  // Events instead.
   const activeCourses = useMemo(
     () =>
       profileResources.filter(
         (item) => item.resource?.resource_type === "course" && item.statusId === IN_PROGRESS_STATUS_ID,
       ),
     [profileResources],
+  );
+  const inProgressCourses = useMemo(
+    () => activeCourses.filter((item) => !item.startDate || isPastOrToday(item.startDate)),
+    [activeCourses],
+  );
+  const upcomingCourses = useMemo(
+    () => activeCourses.filter((item) => item.startDate && !isPastOrToday(item.startDate)),
+    [activeCourses],
   );
   const completedCourses = useMemo(
     () =>
@@ -278,15 +316,65 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     return map;
   }, [profileResources]);
 
+  // The resource currently open in the Add dialog (name/course units are
+  // looked up from `resources` by id when the dialog is opened).
+  const [addDialogResource, setAddDialogResource] = useState<{ id: string; name: string; courseUnits: number | null } | null>(null);
+
   /**
-   * Adds a resource to this profile with the "In Progress" status via the
-   * PUT endpoint, then refreshes the pairing list so it shows up immediately.
+   * Adds a resource to this profile with the "In Progress" status and the
+   * chosen start/end dates via the PUT endpoint, then refreshes the pairing
+   * list so it shows up immediately (under In Progress or Upcoming Events,
+   * depending on whether the start date is in the future).
    */
-  const handleAddResource = useCallback(async (resourceId: string) => {
+  const handleAddResource = useCallback(async (resourceId: string, startDate: string, endDate: string) => {
     setAddingResourceId(resourceId);
     try {
       const response = await fetch(
-        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${IN_PROGRESS_STATUS_ID}`,
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${IN_PROGRESS_STATUS_ID}&startDate=${startDate}&endDate=${endDate}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      setAddDialogResource(null);
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setAddingResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
+
+  // Tracks the resource currently being marked complete/removed, to disable its button.
+  const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
+  const [removingResourceId, setRemovingResourceId] = useState<string | null>(null);
+  const [updatingEndDateResourceId, setUpdatingEndDateResourceId] = useState<string | null>(null);
+
+  // The course pending a Remove or Complete confirmation, shown as a
+  // centered ConfirmDialog rather than an inline banner — the old banner sat
+  // right over the course title, hiding the one piece of context (which
+  // course) the confirmation needs to show.
+  const [removeConfirmTarget, setRemoveConfirmTarget] = useState<{ resourceId: string; title: string } | null>(null);
+  const [completeConfirmTarget, setCompleteConfirmTarget] = useState<{ resourceId: string; title: string } | null>(null);
+
+  // The resource currently showing an inline end-date editor, and its draft value.
+  const [editingEndDateId, setEditingEndDateId] = useState<string | null>(null);
+  const [editingEndDateValue, setEditingEndDateValue] = useState('');
+
+  /**
+   * Removes a course from the profile by setting its status to "Cancelled"
+   * rather than deleting the profile_resource row — this preserves history
+   * and, since Cancelled matches neither the In Progress nor Completed status
+   * filters, the course simply disappears from both lists and its Add button
+   * re-enables in the Resources list.
+   */
+  const handleRemoveCourse = useCallback(async (resourceId: string) => {
+    setRemovingResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${CANCELLED_STATUS_ID}`,
         { method: "PUT" },
       );
 
@@ -298,12 +386,35 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     } catch {
       // Minimal handling: no-op on failure.
     } finally {
-      setAddingResourceId(null);
+      setRemovingResourceId(null);
     }
   }, [profileId, loadProfileResources]);
 
-  // Tracks the resource currently being marked complete, to disable its button.
-  const [completingResourceId, setCompletingResourceId] = useState<string | null>(null);
+  /**
+   * Updates just the expected end date for an already-enrolled course.
+   * Resends the course's current status unchanged (required by the PUT
+   * endpoint) alongside the new endDate; startDate is left untouched.
+   */
+  const handleUpdateEndDate = useCallback(async (resourceId: string, statusId: number, endDate: string) => {
+    setUpdatingEndDateResourceId(resourceId);
+    try {
+      const response = await fetch(
+        `/api/profiles/${profileId}/resources?resourceId=${encodeURIComponent(resourceId)}&statusId=${statusId}&endDate=${endDate}`,
+        { method: "PUT" },
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      await loadProfileResources();
+      setEditingEndDateId(null);
+    } catch {
+      // Minimal handling: no-op on failure.
+    } finally {
+      setUpdatingEndDateResourceId(null);
+    }
+  }, [profileId, loadProfileResources]);
 
   /**
    * Marks an in-progress course complete: sets the profile_resource pairing to
@@ -428,7 +539,37 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // section below instead of a third tab here — see showCourseraSection.
   const [activeSource, setActiveSource] = useState<'mcit' | 'youtube'>('mcit');
   const [showCourseraSection, setShowCourseraSection] = useState(false);
-  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'certifications' | 'activities' | 'experience' | 'projects'>('ongoing');
+
+  // Resource descriptions are clamped to 5 lines with an Expand button, but
+  // only when the text actually overflows. `measuredDescriptionIds` records
+  // which resources have already had their overflow checked (via the ref
+  // callback below) so we measure each one exactly once, while still
+  // rendered in its clamped state — measuring again after it's expanded
+  // would always report "fits", hiding the button incorrectly.
+  const measuredDescriptionIds = useRef<Set<string>>(new Set());
+  const [truncatedDescriptionIds, setTruncatedDescriptionIds] = useState<Set<string>>(new Set());
+  const [expandedDescriptionIds, setExpandedDescriptionIds] = useState<Set<string>>(new Set());
+
+  const measureDescription = useCallback((id: string, el: HTMLParagraphElement | null) => {
+    if (!el || measuredDescriptionIds.current.has(id)) return;
+    measuredDescriptionIds.current.add(id);
+    if (el.scrollHeight > el.clientHeight + 1) {
+      setTruncatedDescriptionIds((prev) => new Set(prev).add(id));
+    }
+  }, []);
+
+  const toggleDescriptionExpanded = useCallback((id: string) => {
+    setExpandedDescriptionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'experience' | 'projects'>('ongoing');
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -442,6 +583,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // the API (see services/resources.ts), so no client-side re-sort here.
   const combinedResources: DisplayResource[] = resources
   .filter((resource) => !resource.isExternal)
+  .filter((resource) => {
+    // Once a course is added to My Progress (In Progress or Completed), it
+    // no longer needs to show up in the browsing list — a Cancelled/removed
+    // course still passes through here so it can be re-added.
+    const status = resourceStatusById.get(resource.id);
+    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
+  })
   .map(toDisplayResource)
   .filter((resource) => {
     const query = searchQuery.trim().toLowerCase();
@@ -468,36 +616,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       resource.skills.some((skill) => skill.toLowerCase().includes(query))
     );
   });
-
-  const userProfile = sampleUserProfile;
-
-  // Sample upcoming activities
-  const upcomingActivities = [
-    {
-      id: 'upcoming-1',
-      title: 'AI Summit 2026',
-      type: 'Conference',
-      date: '2026-06-20',
-      description: 'Annual AI and ML conference in San Francisco',
-    },
-    {
-      id: 'upcoming-2',
-      title: 'Deep Learning Workshop',
-      type: 'Workshop',
-      date: '2026-06-12',
-      description: 'Hands-on workshop on transformer architectures',
-    },
-  ];
-
-  // Sample in-progress certifications
-  const inProgressCertifications = [
-    {
-      id: 'cert-progress-1',
-      name: 'Google Cloud Professional ML Engineer',
-      progress: 65,
-      expectedCompletion: '2026-07-15',
-    },
-  ];
 
   const handleAgentSubmit = async () => {
     const message = agentInputText.trim();
@@ -582,11 +700,138 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     }
   };
 
+  /**
+   * Renders one enrolled-course card, shared across the In Progress,
+   * Upcoming Events, and Completed Courses lists so the progress bar,
+   * end-date editor, and Remove/Complete confirmations stay in sync in one
+   * place instead of being duplicated per section.
+   */
+  function renderCourseCard(course: ProfileResourceApiItem, opts: { showProgress: boolean; showCompleteButton: boolean }) {
+    const isHov = hoveredItem === `course-${course.id}`;
+    const name = course.resource?.name ?? `Resource ${course.resource_id}`;
+    const title = course.resource?.courses
+      ? `${course.resource.courses.course_id} - ${name}`
+      : name;
+    const isEditingEndDate = editingEndDateId === course.resource_id;
+    const showBar = opts.showProgress && Boolean(course.startDate) && Boolean(course.expectedEndDate);
+    const progressPercent = showBar ? courseProgressPercent(course.startDate!, course.expectedEndDate!) : null;
+
+    return (
+      <div
+        key={course.id}
+        className="relative p-3 rounded-lg transition-all cursor-default"
+        style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'rgba(253,211,87,0.3)'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
+        onMouseEnter={() => setHoveredItem(`course-${course.id}`)}
+        onMouseLeave={() => setHoveredItem(null)}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
+            <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {progressPercent !== null ? (
+              <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{progressPercent}%</span>
+            ) : (
+              course.status?.status && (
+                <span className="text-xs font-semibold" style={{ color: '#02746f' }}>{course.status.status}</span>
+              )
+            )}
+            <button
+              onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
+              disabled={removingResourceId === course.resource_id}
+              title="Remove course"
+              className="p-1 -m-1 rounded-md hover:bg-black/5 disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+            </button>
+          </div>
+        </div>
+
+        {showBar && (
+          <div className="w-full h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'rgba(184,226,212,0.3)' }}>
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${progressPercent}%`, background: 'linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)' }}
+            />
+          </div>
+        )}
+
+        {(course.startDate || course.expectedEndDate) && (
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
+            <span>
+              {course.startDate ? new Date(course.startDate).toLocaleDateString() : '—'}
+              {' – '}
+              {isEditingEndDate ? '' : course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
+            </span>
+            {isEditingEndDate ? (
+              <>
+                <DatePicker
+                  value={editingEndDateValue}
+                  onChange={setEditingEndDateValue}
+                  minDate={course.startDate ?? undefined}
+                  placeholder="End date"
+                />
+                <button
+                  onClick={() => editingEndDateValue && handleUpdateEndDate(course.resource_id, course.statusId, editingEndDateValue)}
+                  disabled={!editingEndDateValue || updatingEndDateResourceId === course.resource_id}
+                  className="font-medium disabled:opacity-50"
+                  style={{ color: '#02746f' }}
+                >
+                  Save
+                </button>
+                <button onClick={() => setEditingEndDateId(null)} style={{ color: '#55371e' }}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  setEditingEndDateId(course.resource_id);
+                  setEditingEndDateValue(course.expectedEndDate ?? '');
+                }}
+                title="Update end date"
+                className="p-0.5 rounded hover:bg-black/5"
+              >
+                <Pencil className="w-3 h-3" style={{ color: '#55371e' }} />
+              </button>
+            )}
+          </div>
+        )}
+
+        <ResourceSkillBadges resource={course.resource} className="mt-2" />
+        {isHov && course.resource?.description && (
+          <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
+            <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
+            {course.resource.source && (
+              <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
+                <span>Source: <strong>{course.resource.source}</strong></span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {opts.showCompleteButton && (
+          <button
+            onClick={() => setCompleteConfirmTarget({ resourceId: course.resource_id, title })}
+            disabled={completingResourceId === course.resource_id}
+            className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+            style={{ backgroundColor: '#02746f', color: '#ffffff' }}
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   // The course search bar only searches MCIT courses, so hide it whenever
   // that source isn't the active tab.
   const coursesVisible = activeSource === 'mcit' && !showCourseraSection;
 
   return (
+    <>
     <div className="h-full grid grid-cols-12 gap-6" style={{ maxHeight: 'calc(100vh - 120px)' }}>
       {/* Left Panel - Resources */}
       <div className="col-span-5 bg-white rounded-2xl shadow-md flex flex-col overflow-hidden" style={{ maxHeight: '100%' }}>
@@ -640,7 +885,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search MCIT courses…"
+                placeholder="Search"
                 className="w-full pl-9 pr-8 py-2 rounded-lg text-sm border outline-none"
                 style={{ borderColor: 'rgba(21, 16, 12, 0.1)', color: '#15100c' }}
               />
@@ -732,9 +977,52 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                         <h4 className="font-semibold mb-1" style={{ color: '#15100c' }}>
                           {resource.title}
                         </h4>
-                        <p className="text-sm mb-2" style={{ color: '#55371e' }}>
-                          {resource.description}
-                        </p>
+                        <div className="relative mb-2">
+                          <p
+                            ref={(el) => measureDescription(resource.id, el)}
+                            className="text-sm"
+                            style={{
+                              color: '#55371e',
+                              lineHeight: '1.25rem',
+                              ...(expandedDescriptionIds.has(resource.id)
+                                ? {}
+                                : {
+                                    maxHeight: 'calc(1.25rem * 5)',
+                                    overflow: 'hidden',
+                                  }),
+                            }}
+                          >
+                            {resource.description}
+                          </p>
+                          {truncatedDescriptionIds.has(resource.id) &&
+                            !expandedDescriptionIds.has(resource.id) && (
+                              <button
+                                onClick={() => toggleDescriptionExpanded(resource.id)}
+                                className="text-xs font-medium"
+                                style={{
+                                  position: 'absolute',
+                                  right: 0,
+                                  bottom: 0,
+                                  paddingLeft: '1.5rem',
+                                  lineHeight: 'inherit',
+                                  background: 'linear-gradient(to right, transparent, #ffffff 45%)',
+                                  color: '#02746f',
+                                }}
+                              >
+                                ...Expand
+                              </button>
+                            )}
+                        </div>
+                        {truncatedDescriptionIds.has(resource.id) &&
+                          expandedDescriptionIds.has(resource.id) && (
+                            <button
+                              onClick={() => toggleDescriptionExpanded(resource.id)}
+                              className="text-xs font-medium mb-2"
+                              style={{ color: '#02746f' }}
+                            >
+                              Collapse
+                            </button>
+                          )}
                       </div>
                     </div>
 
@@ -932,9 +1220,57 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                           <h4 className="font-semibold mb-1" style={{ color: '#15100c' }}>
                             {resource.title}
                           </h4>
-                          <p className="text-sm mb-2" style={{ color: '#55371e' }}>
-                            {resource.description}
-                          </p>
+                          <div className="relative mb-2">
+                            <p
+                              ref={(el) => measureDescription(resource.id, el)}
+                              className="text-sm"
+                              style={{
+                                color: '#55371e',
+                                lineHeight: '1.25rem',
+                                ...(expandedDescriptionIds.has(resource.id)
+                                  ? {}
+                                  : {
+                                      // Plain pixel-height crop rather than -webkit-line-clamp:
+                                      // line-clamp inserts its own browser-positioned "…", which
+                                      // can land mid-word and collide with the "...Expand" button
+                                      // overlaid below. A fixed height crops cleanly with no
+                                      // ellipsis of its own, leaving only ours visible.
+                                      maxHeight: 'calc(1.25rem * 5)',
+                                      overflow: 'hidden',
+                                    }),
+                              }}
+                            >
+                              {resource.description}
+                            </p>
+                            {truncatedDescriptionIds.has(resource.id) &&
+                              !expandedDescriptionIds.has(resource.id) && (
+                                <button
+                                  onClick={() => toggleDescriptionExpanded(resource.id)}
+                                  className="text-xs font-medium"
+                                  style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    bottom: 0,
+                                    paddingLeft: '1.5rem',
+                                    lineHeight: 'inherit',
+                                    background: 'linear-gradient(to right, transparent, #ffffff 45%)',
+                                    color: '#02746f',
+                                  }}
+                                >
+                                  ...Expand
+                                </button>
+                              )}
+                          </div>
+                          {truncatedDescriptionIds.has(resource.id) &&
+                            expandedDescriptionIds.has(resource.id) && (
+                              <button
+                                onClick={() => toggleDescriptionExpanded(resource.id)}
+                                className="text-xs font-medium mb-2"
+                                style={{ color: '#02746f' }}
+                              >
+                                Collapse
+                              </button>
+                            )}
                         </div>
                       </div>
 
@@ -995,7 +1331,13 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                             : 'Add';
                           return (
                             <button
-                              onClick={() => handleAddResource(resource.id)}
+                              onClick={() =>
+                                setAddDialogResource({
+                                  id: resource.id,
+                                  name: resource.title,
+                                  courseUnits: resources.find((r) => r.id === resource.id)?.course?.units ?? null,
+                                })
+                              }
                               disabled={isAdding || alreadySelected}
                               title={alreadySelected ? 'Already selected' : undefined}
                               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none"
@@ -1145,16 +1487,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             Skills
           </button>
           <button
-            onClick={() => setProfileSection('certifications')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'certifications' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'certifications' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Certifications
-          </button>
-          <button
             onClick={() => setProfileSection('experience')}
             className="px-3 py-2.5 text-sm font-medium transition-colors"
             style={{
@@ -1174,141 +1506,38 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
           >
             Projects
           </button>
-          <button
-            onClick={() => setProfileSection('activities')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'activities' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'activities' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Activities
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {/* Ongoing Tab */}
           {profileSection === 'ongoing' && (
             <div className="space-y-6">
-              {/* In Progress — merged courses + certifications */}
-              {(activeCourses.length > 0 || inProgressCertifications.length > 0) && (
+              {/* In Progress */}
+              {inProgressCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Clock className="w-4 h-4" style={{ color: '#02746f' }} />
                     In Progress
                   </h3>
                   <div className="space-y-2">
-                    {activeCourses.map(course => {
-                      const isHov = hoveredItem === `course-${course.id}`;
-                      const name = course.resource?.name ?? `Resource ${course.resource_id}`;
-                      const title = course.resource?.courses
-                        ? `${course.resource.courses.course_id} - ${name}`
-                        : name;
-                      return (
-                        <div
-                          key={course.id}
-                          className="relative p-3 rounded-lg transition-all cursor-default"
-                          style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'rgba(253,211,87,0.3)'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
-                          onMouseEnter={() => setHoveredItem(`course-${course.id}`)}
-                          onMouseLeave={() => setHoveredItem(null)}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
-                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
-                            </div>
-                            {course.status?.status && (
-                              <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{course.status.status}</span>
-                            )}
-                          </div>
-                          {(course.startDate || course.expectedEndDate) && (
-                            <div className="text-xs" style={{ color: '#55371e' }}>
-                              {course.startDate ? new Date(course.startDate).toLocaleDateString() : '—'}
-                              {' – '}
-                              {course.expectedEndDate ? new Date(course.expectedEndDate).toLocaleDateString() : '—'}
-                            </div>
-                          )}
-                          <ResourceSkillBadges resource={course.resource} className="mt-2" />
-                          {isHov && course.resource?.description && (
-                            <div className="mt-2 pt-2 border-t space-y-1.5" style={{ borderColor: 'rgba(253,211,87,0.4)' }}>
-                              <p className="text-xs" style={{ color: '#55371e' }}>{course.resource.description}</p>
-                              {course.resource.source && (
-                                <div className="flex items-center gap-3 text-xs" style={{ color: '#55371e' }}>
-                                  <span>Source: <strong>{course.resource.source}</strong></span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <button
-                            onClick={() => handleCompleteCourse(course.resource_id)}
-                            disabled={completingResourceId === course.resource_id}
-                            className="mt-3 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-                            style={{ backgroundColor: '#02746f', color: '#ffffff' }}
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            {completingResourceId === course.resource_id ? 'Completing…' : 'Complete'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {inProgressCertifications.map(cert => {
-                      const isHov = hoveredItem === cert.id;
-                      return (
-                        <div
-                          key={cert.id}
-                          className="relative p-3 rounded-lg transition-all cursor-default"
-                          style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'rgba(253,211,87,0.3)'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.08)' : 'none' }}
-                          onMouseEnter={() => setHoveredItem(cert.id)}
-                          onMouseLeave={() => setHoveredItem(null)}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Award className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#fdd357' }} />
-                              <span className="text-sm font-medium" style={{ color: '#15100c' }}>{cert.name}</span>
-                            </div>
-                            <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#02746f' }}>{cert.progress}%</span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full overflow-hidden mb-1.5" style={{ backgroundColor: 'rgba(184,226,212,0.3)' }}>
-                            <div className="h-full rounded-full" style={{ width: `${cert.progress}%`, background: 'linear-gradient(90deg, #02746f 0%, #b8e2d4 100%)' }} />
-                          </div>
-                          <div className="text-xs" style={{ color: '#55371e' }}>Expected: {new Date(cert.expectedCompletion).toLocaleDateString()}</div>
-                          {isHov && (
-                            <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: 'rgba(253,211,87,0.4)', color: '#55371e' }}>
-                              Professional certification — validates expertise in cloud ML workloads.
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, showCompleteButton: true }))}
                   </div>
                 </div>
               )}
 
-              {/* Upcoming Activities */}
-              {upcomingActivities.length > 0 && (
+              {inProgressCourses.length === 0 && upcomingCourses.length === 0 && (
+                <p className="text-xs" style={{ color: '#55371e' }}>Nothing in progress yet.</p>
+              )}
+
+              {/* Upcoming Events — courses added with a future start date */}
+              {upcomingCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Calendar className="w-4 h-4" style={{ color: '#02746f' }} />
                     Upcoming Events
                   </h3>
                   <div className="space-y-2">
-                    {upcomingActivities.map(activity => (
-                      <div
-                        key={activity.id}
-                        className="p-3 rounded-lg"
-                        style={{ backgroundColor: 'rgba(184, 226, 212, 0.15)', border: '1px solid rgba(2, 116, 111, 0.2)' }}
-                      >
-                        <div className="flex items-start justify-between mb-1">
-                          <div className="text-sm font-medium" style={{ color: '#15100c' }}>{activity.title}</div>
-                          <span className="text-xs px-2 py-0.5 rounded flex-shrink-0 ml-2" style={{ backgroundColor: 'rgba(253, 211, 87, 0.3)', color: '#15100c' }}>{activity.type}</span>
-                        </div>
-                        <p className="text-xs mb-1" style={{ color: '#55371e' }}>{activity.description}</p>
-                        <div className="flex items-center gap-1 text-xs" style={{ color: '#02746f' }}>
-                          <Clock className="w-3 h-3" />
-                          {new Date(activity.date).toLocaleDateString()}
-                        </div>
-                      </div>
-                    ))}
+                    {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, showCompleteButton: false }))}
                   </div>
                 </div>
               )}
@@ -1350,12 +1579,21 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                     return (
                       <div
                         key={course.id}
-                        className="p-3 rounded-lg transition-all"
+                        className="relative p-3 rounded-lg transition-all"
                         style={{ backgroundColor: 'rgba(184,226,212,0.15)', border: '1px solid transparent' }}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
-                          <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
+                            <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
+                          </div>
+                          <button
+                            onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
+                            title="Remove course"
+                            className="p-1 -m-1 rounded-md hover:bg-black/5 flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                          </button>
                         </div>
                         {course.expectedEndDate && (
                           <div className="text-xs" style={{ color: '#55371e' }}>Completed: {new Date(course.expectedEndDate).toLocaleDateString()}</div>
@@ -1408,36 +1646,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                   </div>
                 ))
               )}
-            </div>
-          )}
-
-          {/* Certifications Tab */}
-          {profileSection === 'certifications' && (
-            <div className="space-y-2">
-              {userProfile.certifications.map((cert, idx) => {
-                const isHov = hoveredItem === `cert-${idx}`;
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg transition-all cursor-default"
-                    style={{ backgroundColor: 'rgba(253,211,87,0.15)', border: `1px solid ${isHov ? 'rgba(253,211,87,0.6)' : 'transparent'}`, boxShadow: isHov ? '0 4px 12px rgba(0,0,0,0.07)' : 'none' }}
-                    onMouseEnter={() => setHoveredItem(`cert-${idx}`)}
-                    onMouseLeave={() => setHoveredItem(null)}
-                  >
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <Award className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#fdd357' }} />
-                      <span className="text-sm font-medium" style={{ color: '#15100c' }}>{cert.name}</span>
-                    </div>
-                    <div className="text-xs" style={{ color: '#55371e' }}>{cert.issuer} · {cert.date}</div>
-                    {isHov && (
-                      <div className="mt-2 pt-2 border-t text-xs space-y-1" style={{ borderColor: 'rgba(253,211,87,0.4)', color: '#55371e' }}>
-                        <div>Issued by <strong>{cert.issuer}</strong> — industry-recognised credential.</div>
-                        <div style={{ color: '#02746f' }}>✓ Valid · Earned {cert.date}</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           )}
 
@@ -1505,46 +1713,46 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             </div>
           )}
 
-          {/* Activities Tab */}
-          {profileSection === 'activities' && (() => {
-            const activities = [
-              { id: 'act-0', icon: Calendar, title: 'San Francisco ML Meetup', date: 'June 1, 2026', summary: 'Monthly meetup on practical ML applications', detail: 'Networked with 80+ ML practitioners. Discussed real-world feature engineering challenges and production deployment patterns.' },
-              { id: 'act-1', icon: Briefcase, title: 'Tech Conference 2026', date: 'March 15, 2026', summary: 'Presented paper on distributed ML systems', detail: 'Paper: "Scaling ML Pipelines Beyond 10M Records". Received positive feedback from Google and Meta engineers in attendance.' },
-            ];
-            return (
-              <div className="space-y-3">
-                {activities.map(act => {
-                  const isOpen = expandedItem === act.id;
-                  return (
-                    <div
-                      key={act.id}
-                      className="p-4 rounded-lg transition-all cursor-pointer"
-                      style={{ backgroundColor: isOpen ? 'rgba(184,226,212,0.18)' : 'rgba(184,226,212,0.12)', border: `1px solid ${isOpen ? 'rgba(2,116,111,0.2)' : 'transparent'}` }}
-                      onClick={() => setExpandedItem(isOpen ? null : act.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <act.icon className="w-4 h-4 flex-shrink-0" style={{ color: '#02746f' }} />
-                          <span className="text-sm font-medium" style={{ color: '#15100c' }}>{act.title}</span>
-                        </div>
-                        <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform" style={{ color: '#02746f', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                      </div>
-                      <div className="text-xs mt-0.5 ml-6" style={{ color: '#55371e' }}>{act.summary} · {act.date}</div>
-                      {isOpen && (
-                        <div className="mt-3 border-t pt-3 ml-6 text-xs" style={{ borderColor: 'rgba(2,116,111,0.12)', color: '#55371e' }}>
-                          {act.detail}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
           {/* Resume Tab */}
         </div>
       </div>
     </div>
+    {addDialogResource && (
+      <AddResourceDialog
+        resourceName={addDialogResource.name}
+        courseUnits={addDialogResource.courseUnits}
+        isSubmitting={addingResourceId === addDialogResource.id}
+        onCancel={() => setAddDialogResource(null)}
+        onConfirm={(startDate, endDate) => handleAddResource(addDialogResource.id, startDate, endDate)}
+      />
+    )}
+    {removeConfirmTarget && (
+      <ConfirmDialog
+        title="Remove course"
+        message={`Remove "${removeConfirmTarget.title}"? You can add it again later from Resources.`}
+        confirmLabel="Remove"
+        onCancel={() => setRemoveConfirmTarget(null)}
+        onConfirm={() => {
+          const { resourceId } = removeConfirmTarget;
+          setRemoveConfirmTarget(null);
+          void handleRemoveCourse(resourceId);
+        }}
+      />
+    )}
+    {completeConfirmTarget && (
+      <ConfirmDialog
+        title="Mark course complete"
+        message={`Mark "${completeConfirmTarget.title}" as complete? This adds its skills to your profile.`}
+        confirmLabel="Complete"
+        tone="primary"
+        onCancel={() => setCompleteConfirmTarget(null)}
+        onConfirm={() => {
+          const { resourceId } = completeConfirmTarget;
+          setCompleteConfirmTarget(null);
+          void handleCompleteCourse(resourceId);
+        }}
+      />
+    )}
+    </>
   );
 }
