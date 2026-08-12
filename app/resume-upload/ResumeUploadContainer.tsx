@@ -18,7 +18,7 @@ function getApiError(body: unknown): string {
   return "Failed to upload resume.";
 }
 
-export default function ResumeUploadContainer() {
+export default function ResumeUploadContainer({ hasProfile }: { hasProfile: boolean }) {
   const router = useRouter();
   const { signOut } = useClerk();
 
@@ -53,9 +53,11 @@ export default function ResumeUploadContainer() {
   return (
     <ResumeUploadPage
       onSubmit={handleSubmit}
-      onLogout={() => {
-        void signOut({ redirectUrl: "/sign-in" });
-      }}
+      onBack={
+        hasProfile
+          ? () => router.push("/landscape")
+          : () => void signOut({ redirectUrl: "/sign-in" })
+      }
     />
   );
 }

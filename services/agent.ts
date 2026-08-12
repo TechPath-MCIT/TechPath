@@ -361,12 +361,18 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         if (endDate && !parsedEnd) {
           return { success: false, error: `"${endDate}" isn't a valid date — use YYYY-MM-DD.` };
         }
-        if (parsedStart && !parsedEnd) {
-          // Same default the Add dialog uses: 14 weeks for a full course,
-          // 7 for a half-unit one.
+
+        // Same default the Add dialog uses: 14 weeks out for a full course,
+        // 7 for a half-unit one.
+        const defaultEndDate = (start: Date): Date => {
           const weeks = course.course?.units === 0.5 ? 7 : 14;
-          parsedEnd = new Date(parsedStart);
-          parsedEnd.setDate(parsedEnd.getDate() + weeks * 7);
+          const end = new Date(start);
+          end.setDate(end.getDate() + weeks * 7);
+          return end;
+        };
+
+        if (parsedStart && !parsedEnd) {
+          parsedEnd = defaultEndDate(parsedStart);
         }
 
         const dates = parsedStart || parsedEnd
@@ -395,9 +401,13 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         // untouched. Otherwise a course previously scheduled for a future
         // date (Upcoming) would flip to "in progress" status while keeping
         // its stale future date, so it'd still show under Upcoming — a
-        // status/section mismatch.
+        // status/section mismatch. The end date needs the same treatment: if
+        // it wasn't explicitly given, recompute it from the (possibly just
+        // defaulted) start date rather than leaving behind an end date that
+        // was only ever correct for the course's previous start date.
         const inProgressStart = parsedStart ?? new Date();
-        const inProgressDates = { startDate: inProgressStart, expectedEndDate: parsedEnd ?? undefined };
+        const inProgressEnd = parsedEnd ?? defaultEndDate(inProgressStart);
+        const inProgressDates = { startDate: inProgressStart, expectedEndDate: inProgressEnd };
 
         await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, inProgressDates);
         return {
@@ -405,7 +415,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
           courseName: course.name,
           status: 'in_progress',
           startDate: inProgressStart.toISOString().slice(0, 10),
-          expectedEndDate: parsedEnd ? parsedEnd.toISOString().slice(0, 10) : null,
+          expectedEndDate: inProgressEnd.toISOString().slice(0, 10),
         };
       },
     }),

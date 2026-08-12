@@ -4,10 +4,10 @@ import { AnimatedBackground } from '../components/AnimatedBackground';
 
 interface ResumeUploadPageProps {
   onSubmit: (file: File) => Promise<void>;
-  onLogout: () => void;
+  onBack: () => void;
 }
 
-export function ResumeUploadPage({ onSubmit, onLogout }: ResumeUploadPageProps) {
+export function ResumeUploadPage({ onSubmit, onBack }: ResumeUploadPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -197,10 +197,10 @@ export function ResumeUploadPage({ onSubmit, onLogout }: ResumeUploadPageProps) 
           )}
         </button>
 
-        {/* Logout */}
+        {/* Back */}
         <div className="mt-6 pt-5 border-t flex items-center" style={{ borderColor: 'rgba(21,16,12,0.08)' }}>
           <button
-            onClick={onLogout}
+            onClick={onBack}
             className="flex items-center gap-1.5 text-xs transition-colors hover:opacity-70"
             style={{ color: '#55371e' }}
           >
