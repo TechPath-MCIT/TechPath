@@ -593,13 +593,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   // the API (see services/resources.ts), so no client-side re-sort here.
   const combinedResources: DisplayResource[] = resources
   .filter((resource) => !resource.isExternal)
-  .filter((resource) => {
-    // Once a course is added to My Progress (In Progress or Completed), it
-    // no longer needs to show up in the browsing list — a Cancelled/removed
-    // course still passes through here so it can be re-added.
-    const status = resourceStatusById.get(resource.id);
-    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
-  })
   .map(toDisplayResource)
   .filter((resource) => {
     const query = searchQuery.trim().toLowerCase();
@@ -609,6 +602,17 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       resource.title.toLowerCase().includes(query) ||
       resource.skills.some((skill) => skill.toLowerCase().includes(query))
     );
+  })
+  .filter((resource) => {
+    // Once a course is added to My Progress (In Progress or Completed), hide
+    // it from the passive browse list — a Cancelled/removed course still
+    // passes through so it can be re-added. But an active search is a
+    // deliberate lookup, not passive browsing, so let it still surface
+    // enrolled courses too (the Add button already shows their real status
+    // instead of "Add" in that case, so there's no ambiguity).
+    if (searchQuery.trim()) return true;
+    const status = resourceStatusById.get(resource.id);
+    return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
   });
 
   // Coursera courses — kept as a separate, clearly-labeled "browse" section
