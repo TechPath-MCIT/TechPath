@@ -580,8 +580,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       return next;
     });
   }, []);
-  const [profileSection, setProfileSection] = useState<'ongoing' | 'courses' | 'skills' | 'experience' | 'projects'>('ongoing');
-  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const [profileSection, setProfileSection] = useState<'courses' | 'skills' | 'experience' | 'projects'>('courses');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [showAgentInput, setShowAgentInput] = useState(false);
@@ -1468,16 +1467,6 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         {/* Profile Tabs */}
         <div className="flex border-b px-6" style={{ borderColor: 'rgba(21, 16, 12, 0.1)' }}>
           <button
-            onClick={() => setProfileSection('ongoing')}
-            className="px-3 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: profileSection === 'ongoing' ? '#02746f' : '#55371e',
-              borderBottom: profileSection === 'ongoing' ? '2px solid #02746f' : '2px solid transparent',
-            }}
-          >
-            Ongoing
-          </button>
-          <button
             onClick={() => setProfileSection('courses')}
             className="px-3 py-2.5 text-sm font-medium transition-colors"
             style={{
@@ -1520,15 +1509,17 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Ongoing Tab */}
-          {profileSection === 'ongoing' && (
+          {/* Courses Tab — In Progress, Upcoming, and Completed together,
+              since they're all just different statuses of the same
+              underlying enrolled-course list. */}
+          {profileSection === 'courses' && (
             <div className="space-y-6">
               {/* In Progress */}
               {inProgressCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Clock className="w-4 h-4" style={{ color: '#02746f' }} />
-                    In Progress
+                    In Progress Courses
                   </h3>
                   <div className="space-y-2">
                     {inProgressCourses.map(course => renderCourseCard(course, { showProgress: true, showCompleteButton: true }))}
@@ -1536,50 +1527,31 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                 </div>
               )}
 
-              {inProgressCourses.length === 0 && upcomingCourses.length === 0 && (
-                <p className="text-xs" style={{ color: '#55371e' }}>Nothing in progress yet.</p>
-              )}
-
-              {/* Upcoming Events — courses added with a future start date */}
+              {/* Upcoming — courses added with a future start date */}
               {upcomingCourses.length > 0 && (
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: '#15100c' }}>
                     <Calendar className="w-4 h-4" style={{ color: '#02746f' }} />
-                    Upcoming Events
+                    Upcoming Courses
                   </h3>
                   <div className="space-y-2">
                     {upcomingCourses.map(course => renderCourseCard(course, { showProgress: false, showCompleteButton: false }))}
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Courses Tab */}
-          {profileSection === 'courses' && (
-            <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold flex items-center gap-2" style={{ color: '#15100c' }}>
                     <CheckCircle className="w-4 h-4" style={{ color: '#02746f' }} />
                     Completed Courses
                   </h3>
-                  {completedCourses.length > 2 && (
-                    <button
-                      onClick={() => setShowAllCompleted(!showAllCompleted)}
-                      className="text-xs font-medium flex items-center gap-1"
-                      style={{ color: '#02746f' }}
-                    >
-                      {showAllCompleted ? 'Show Less' : `View All (${completedCourses.length})`}
-                      {showAllCompleted ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-                  )}
                 </div>
                 {completedCourses.length === 0 ? (
                   <p className="text-xs" style={{ color: '#55371e' }}>No completed courses yet.</p>
                 ) : (
                 <div className="space-y-2">
-                  {(showAllCompleted ? completedCourses : completedCourses.slice(0, 2)).map(course => {
+                  {completedCourses.map(course => {
                     const name = course.resource?.name ?? `Resource ${course.resource_id}`;
                     const title = course.resource?.courses
                       ? `${course.resource.courses.course_id} - ${name}`
