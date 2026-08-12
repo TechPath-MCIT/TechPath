@@ -590,6 +590,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   const [isSendingAgentUpdate, setIsSendingAgentUpdate] = useState(false);
   const [agentUpdateReply, setAgentUpdateReply] = useState<string | null>(null);
   const [agentUpdateError, setAgentUpdateError] = useState<string | null>(null);
+  // Threads Quick Update messages into one conversation (same pattern as the
+  // main Agent page) so a clarifying follow-up from the agent — "which course?"
+  // "start or end date?" — can actually be answered, instead of every message
+  // being a fresh, context-free request. Resets when the box is closed.
+  const quickUpdateConversationIdRef = useRef<number | null>(null);
+  const quickUpdateHistoryRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   // MCIT courses only — already ranked by relevance to the target role from
   // the API (see services/resources.ts), so no client-side re-sort here.
@@ -645,7 +651,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
       const response = await fetch(`/api/profiles/${profileId}/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          history: quickUpdateHistoryRef.current,
+          conversationId: quickUpdateConversationIdRef.current,
+        }),
       });
 
       if (!response.ok || !response.body) {
@@ -682,11 +692,18 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             setAgentUpdateReply(fullReply);
           } else if (event.type === "done") {
             profileUpdated = event.profileUpdated;
+            quickUpdateConversationIdRef.current = event.conversationId;
           } else if (event.type === "error") {
             throw new Error(event.error);
           }
         }
       }
+
+      quickUpdateHistoryRef.current = [
+        ...quickUpdateHistoryRef.current,
+        { role: 'user', content: message },
+        { role: 'assistant', content: fullReply },
+      ];
 
       setAgentInputText('');
 
@@ -1426,7 +1443,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             <textarea
               value={agentInputText}
               onChange={e => setAgentInputText(e.target.value)}
-              placeholder="Tell the AI what to update... e.g., 'I finished the Networked Systems course' or 'Add a project called Chess Engine' or 'Add AWS to my skills'"
+              placeholder="Tell the AI what to update — it can add or remove Courses, Skills, Experience, and Projects below"
               disabled={isSendingAgentUpdate}
               className="w-full px-3 py-2 rounded-lg border resize-none text-sm disabled:opacity-60"
               style={{ borderColor: 'rgba(21, 16, 12, 0.2)', minHeight: '80px' }}
@@ -1462,6 +1479,8 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                   setShowAgentInput(false);
                   setAgentUpdateReply(null);
                   setAgentUpdateError(null);
+                  quickUpdateConversationIdRef.current = null;
+                  quickUpdateHistoryRef.current = [];
                 }}
                 disabled={isSendingAgentUpdate}
                 className="px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
