@@ -1794,13 +1794,16 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                             <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#02746f' }} />
                             <span className="text-sm font-medium" style={{ color: '#15100c' }}>{title}</span>
                           </div>
-                          <button
-                            onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
-                            title="Remove course"
-                            className="p-1 -m-1 rounded-md hover:bg-black/5 flex-shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-xs font-semibold" style={{ color: '#02746f' }}>Completed</span>
+                            <button
+                              onClick={() => setRemoveConfirmTarget({ resourceId: course.resource_id, title })}
+                              title="Remove course"
+                              className="p-1 -m-1 rounded-md hover:bg-black/5 flex-shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" style={{ color: '#55371e' }} />
+                            </button>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs" style={{ color: '#55371e' }}>
                             {isEditingCompletedDate ? (
