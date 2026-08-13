@@ -148,6 +148,7 @@ interface DisplayResource {
   url?: string;
   instructor?: string;
   isExternal?: boolean;
+  courseUnits?: number | null;
 }
 
 function toDisplayResource(resource: ResourceApiItem): DisplayResource {
@@ -180,11 +181,20 @@ function toDisplayResource(resource: ResourceApiItem): DisplayResource {
     skills: resource.skills.flatMap((skill) => (skill.name ? [skill.name] : [])),
     duration:
       resource.durationText ??
-      (resource.durationMinutes === null ? undefined : `${resource.durationMinutes} minutes`),
+      (resource.durationMinutes !== null
+        ? `${resource.durationMinutes} minutes`
+        : // MCIT courses never have durationMinutes/durationText set — course
+          // units is the only real effort signal available, so fall back to
+          // it (same 14-weeks-per-unit assumption used to default enrollment
+          // end dates elsewhere, e.g. AddResourceDialog.tsx and mark_course_status).
+          resource.course?.units != null
+        ? `${resource.course.units} CU (~${Math.round(resource.course.units * 14)} wks)`
+        : undefined),
     cost,
     url: resource.url ?? undefined,
     instructor: instructor || undefined,
     isExternal: resource.isExternal ?? false,
+    courseUnits: resource.course?.units ?? null,
   };
 }
 
@@ -206,7 +216,7 @@ interface RoleSkillsApiResponse {
 
 interface VideoApiResponse {
   success: boolean;
-  data?: string;
+  data?: { videoId: string; durationMinutes: number | null } | null;
 }
 
 interface GrindProject {
@@ -260,7 +270,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
   // Each retrieved YouTube video for a target-role skill.
   const [skillVideos, setSkillVideos] = useState<
-    { skillId: number; skillName: string; videoId: string }[]
+    { skillId: number; skillName: string; videoId: string; durationMinutes: number | null }[]
   >([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
@@ -625,7 +635,8 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             return {
               skillId: skill.skillId,
               skillName: skill.name ?? `Skill ${skill.skillId}`,
-              videoId: videoResult.data,
+              videoId: videoResult.data.videoId,
+              durationMinutes: videoResult.data.durationMinutes,
             };
           } catch {
             return null;
@@ -635,7 +646,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
       setSkillVideos(
         entries.filter(
-          (entry): entry is { skillId: number; skillName: string; videoId: string } =>
+          (entry): entry is { skillId: number; skillName: string; videoId: string; durationMinutes: number | null } =>
             entry !== null,
         ),
       );
@@ -652,6 +663,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
   }, [profileId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [courseraSearchQuery, setCourseraSearchQuery] = useState('');
+  // Filters MCIT courses by course unit load — 0.5 CU courses are a much
+  // smaller time commitment than full 1 CU ones, so letting a user exclude
+  // them helps with realistic planning. Doesn't apply to YouTube (no CU
+  // concept) or Coursera (not MCIT courses).
+  const [cuFilter, setCuFilter] = useState<'all' | 'full' | 'half'>('all');
   // Single-select — MCIT and YouTube are both tailored to the target role,
   // so mixing them in one list made sense as a source toggle. Coursera isn't
   // tailored at all (rating-sorted only), so it lives in its own separate
@@ -727,6 +743,11 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
     if (searchQuery.trim()) return true;
     const status = resourceStatusById.get(resource.id);
     return status !== IN_PROGRESS_STATUS_ID && status !== COMPLETED_STATUS_ID;
+  })
+  .filter((resource) => {
+    if (cuFilter === 'all') return true;
+    if (resource.courseUnits == null) return true;
+    return cuFilter === 'full' ? resource.courseUnits >= 1 : resource.courseUnits < 1;
   });
 
   // Coursera courses — kept as a separate, clearly-labeled "browse" section
@@ -1125,6 +1146,24 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             </div>
           )}
 
+          {coursesVisible && (
+            <div className="flex items-center gap-1.5 mb-4">
+              {(['all', 'full', 'half'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setCuFilter(option)}
+                  className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+                  style={{
+                    background: cuFilter === option ? 'linear-gradient(135deg, #02746f 0%, #b8e2d4 100%)' : 'rgba(184, 226, 212, 0.2)',
+                    color: cuFilter === option ? '#ffffff' : '#15100c',
+                  }}
+                >
+                  {option === 'all' ? 'All courses' : option === 'full' ? '1 CU' : '0.5 CU'}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Explore More Courses - Coursera, kept as its own collapsible
               section (not a third source tab) since it's only rating-sorted,
               not tailored to the target role. Placed right under the search
@@ -1356,6 +1395,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                         >
                           {video.skillName}
                         </span>
+                        {video.durationMinutes != null && (
+                          <span className="flex items-center gap-1 text-xs" style={{ color: "#55371e" }}>
+                            <Clock className="w-3 h-3" />
+                            {video.durationMinutes} min
+                          </span>
+                        )}
                       </div>
                       <div
                         className="relative w-full overflow-hidden rounded-lg"

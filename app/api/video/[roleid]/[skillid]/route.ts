@@ -43,14 +43,17 @@ export async function GET(request: NextRequest) {
     try{
         const videoId = await getYouTubeVideo(skillId, roleId);
 
-        if (videoId.new) {
-            await saveYouTubeVideo(skillId, roleId, videoId.video_id);
-        }
+        // getYouTubeVideo already persists new videos (with their duration)
+        // internally — a second save here with no duration would overwrite
+        // it back to null, so this used to be a redundant, lossy write.
 
         if(videoId.video_id){
-            return NextResponse.json({ success: videoId.success, data : videoId.video_id}, { status: 200 });
+            return NextResponse.json({
+                success: videoId.success,
+                data: { videoId: videoId.video_id, durationMinutes: videoId.duration_minutes ?? null },
+            }, { status: 200 });
         }
-        return NextResponse.json({ success: videoId.success, data : ''}, { status: 404 });
+        return NextResponse.json({ success: videoId.success, data : null}, { status: 404 });
 
     }
     catch(err){
