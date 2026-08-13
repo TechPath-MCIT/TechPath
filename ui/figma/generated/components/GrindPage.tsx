@@ -216,7 +216,7 @@ interface RoleSkillsApiResponse {
 
 interface VideoApiResponse {
   success: boolean;
-  data?: string;
+  data?: { videoId: string; durationMinutes: number | null } | null;
 }
 
 interface GrindProject {
@@ -270,7 +270,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
   // Each retrieved YouTube video for a target-role skill.
   const [skillVideos, setSkillVideos] = useState<
-    { skillId: number; skillName: string; videoId: string }[]
+    { skillId: number; skillName: string; videoId: string; durationMinutes: number | null }[]
   >([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
@@ -635,7 +635,8 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
             return {
               skillId: skill.skillId,
               skillName: skill.name ?? `Skill ${skill.skillId}`,
-              videoId: videoResult.data,
+              videoId: videoResult.data.videoId,
+              durationMinutes: videoResult.data.durationMinutes,
             };
           } catch {
             return null;
@@ -645,7 +646,7 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
 
       setSkillVideos(
         entries.filter(
-          (entry): entry is { skillId: number; skillName: string; videoId: string } =>
+          (entry): entry is { skillId: number; skillName: string; videoId: string; durationMinutes: number | null } =>
             entry !== null,
         ),
       );
@@ -1394,6 +1395,12 @@ export function GrindPage({ profileId, targetRole, skills, experience, projects,
                         >
                           {video.skillName}
                         </span>
+                        {video.durationMinutes != null && (
+                          <span className="flex items-center gap-1 text-xs" style={{ color: "#55371e" }}>
+                            <Clock className="w-3 h-3" />
+                            {video.durationMinutes} min
+                          </span>
+                        )}
                       </div>
                       <div
                         className="relative w-full overflow-hidden rounded-lg"

@@ -11,10 +11,41 @@ type youtube_id = {
 
     video_id: string
 
+    duration_minutes?: number | null
+
     new? : boolean
 }
 
 const ms_per_day = 1000 * 60 * 60 * 24;
+
+// Parses a YouTube contentDetails.duration ISO 8601 string (e.g. "PT14M8S",
+// "PT1H2M10S") into whole minutes, rounding up so a 45-second video doesn't
+// display as "0 min". Returns null for anything that doesn't match.
+function parseIso8601DurationToMinutes(duration: string): number | null {
+    const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(duration);
+    if (!match) return null;
+
+    const hours = Number(match[1] ?? 0);
+    const minutes = Number(match[2] ?? 0);
+    const seconds = Number(match[3] ?? 0);
+
+    return Math.max(1, Math.ceil(hours * 60 + minutes + seconds / 60));
+}
+
+// search.list doesn't return duration — only videos.list with contentDetails
+// does, so a second call is needed to get it.
+async function fetchVideoDurationMinutes(video_id: string): Promise<number | null> {
+    try {
+        const detailsResponse = await youtube.videos.list({
+            part: ['contentDetails'],
+            id: [video_id],
+        });
+        const isoDuration = detailsResponse.data.items?.[0]?.contentDetails?.duration;
+        return isoDuration ? parseIso8601DurationToMinutes(isoDuration) : null;
+    } catch {
+        return null;
+    }
+}
 dotenv.config({ path: '.env.local' });
 // 1. Initialize the YouTube API client
 
@@ -24,7 +55,7 @@ const youtube = google.youtube({
 });
 
 
-export async function saveYouTubeVideo(skill_id:number, role_id : number, video_id: string) {
+export async function saveYouTubeVideo(skill_id:number, role_id : number, video_id: string, duration_minutes?: number | null) {
 
     return  prisma.role_skills.updateManyAndReturn({
         where:{
@@ -34,7 +65,8 @@ export async function saveYouTubeVideo(skill_id:number, role_id : number, video_
 
         data:{
             videoid : video_id,
-            queryDate : new Date()
+            queryDate : new Date(),
+            ...(duration_minutes !== undefined ? { videoDurationMinutes: duration_minutes } : {}),
         }
 
         }
@@ -52,15 +84,29 @@ export async function getYouTubeVideo(skill_id:number, role_id : number): Promis
         select:{
             videoid : true,
             queryDate : true,
+            videoDurationMinutes : true,
         },
     });
     if (row && row.videoid && row.queryDate) {
         const video_id = row.videoid;
         const datediff = (new Date().valueOf() - new Date(row.queryDate).valueOf()) / ms_per_day;
         if(datediff < 7){
+            // Cached videos saved before duration tracking existed have
+            // videoDurationMinutes: null even though they're otherwise still
+            // fresh — backfill it with one extra lookup instead of leaving it
+            // blank for the rest of the 7-day cache window.
+            let duration_minutes = row.videoDurationMinutes;
+            if (duration_minutes === null) {
+                duration_minutes = await fetchVideoDurationMinutes(video_id);
+                if (duration_minutes !== null) {
+                    await saveYouTubeVideo(skill_id, role_id, video_id, duration_minutes);
+                }
+            }
+
             return {
                 success: true,
                 video_id: row.videoid,
+                duration_minutes,
                 new: false
             }
         }
@@ -96,10 +142,14 @@ export async function getYouTubeVideo(skill_id:number, role_id : number): Promis
         }
         // @ts-ignore
         const video_id = response.data.items[0].id.videoId || ''
-        await saveYouTubeVideo(skill_id, role_id, video_id);
+
+        const duration_minutes = video_id ? await fetchVideoDurationMinutes(video_id) : null;
+
+        await saveYouTubeVideo(skill_id, role_id, video_id, duration_minutes);
         return {
             success : true,
             video_id :video_id,
+            duration_minutes,
             new : true
         }
 

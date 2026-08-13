@@ -89,6 +89,7 @@ model role_skills {
   id        Int       @id @default(autoincrement())
   queryDate DateTime? @db.Date
   videoid   String?   @db.VarChar(255)
+  videoDurationMinutes Int?
   roles     Role?     @relation(fields: [Role_ID], references: [roleId], onDelete: NoAction, onUpdate: NoAction)
   skills    Skill?    @relation(fields: [Skill_ID], references: [skillId], onDelete: NoAction, onUpdate: NoAction)
 }
