@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { CATEGORY_BY_SKILL_TYPE, type Category } from "@/services/match";
 
 interface ResourceFilters {
   type?: string | string[];
@@ -6,9 +7,15 @@ interface ResourceFilters {
   limit?: number;
   // When provided, results are ranked by relevance to this role instead of
   // alphabetically — relevance is the sum of (skill's coverage weight on the
-  // resource * skill's importance weight for the role), so a course teaching
-  // several highly-weighted skills for this role ranks above one that only
-  // touches skills irrelevant to it.
+  // resource * skill's importance weight for the role * the role's importance
+  // weight for that skill's category), so a course teaching several
+  // highly-weighted skills for this role ranks above one that only touches
+  // skills irrelevant to it. The category weighting matters because raw
+  // role_skills counts skew toward Coding Language skills for nearly every
+  // role (confirmed live: even Product Manager's top-weighted skills are
+  // dominated by SQL/Java/C/C++/JS) — without it, courses effectively rank
+  // the same regardless of target role, since MCIT courses are only tagged
+  // with a handful of Coding Language/Database skills.
   roleId?: number;
 }
 
@@ -18,7 +25,7 @@ export async function getResources({
   limit = 50,
   roleId,
 }: ResourceFilters = {}) {
-  const [rows, roleSkillRows] = await Promise.all([
+  const [rows, roleSkillRows, role] = await Promise.all([
     prisma.resources.findMany({
       where: {
         publication_status: "published",
@@ -44,17 +51,32 @@ export async function getResources({
       orderBy: {
         name: "asc",
       },
-      take: limit,
+      // Capping via `take` here would slice the candidate pool BEFORE
+      // relevance sorting runs below, silently dropping resources that would
+      // have ranked highest for this role. Only safe to cap up front when
+      // there's no relevance ranking to apply.
+      take: roleId == null ? limit : undefined,
     }),
     roleId == null
       ? Promise.resolve([])
-      : prisma.role_skills.findMany({ where: { Role_ID: roleId } }),
+      : prisma.role_skills.findMany({ where: { Role_ID: roleId }, include: { skills: true } }),
+    roleId == null ? Promise.resolve(null) : prisma.role.findUnique({ where: { roleId } }),
   ]);
+
+  const categoryImportance: Record<Category, number> = {
+    CL: role?.codingLanguageImportance ?? 0,
+    WF: role?.webFrameworkImportance ?? 0,
+    DB: role?.databaseImportance ?? 0,
+  };
 
   const roleSkillWeights = new Map(
     roleSkillRows
       .filter((row) => row.Skill_ID !== null)
-      .map((row) => [row.Skill_ID as number, row.count ?? 0]),
+      .map((row) => {
+        const category = CATEGORY_BY_SKILL_TYPE[row.skills?.type ?? ""];
+        const weight = category ? (row.count ?? 0) * categoryImportance[category] : 0;
+        return [row.Skill_ID as number, weight];
+      }),
   );
 
   const mapped = rows.map((resource) => ({
@@ -109,5 +131,5 @@ export async function getResources({
 
   withRelevance.sort((a, b) => b.relevance - a.relevance || (a.resource.name ?? "").localeCompare(b.resource.name ?? ""));
 
-  return withRelevance.map((entry) => entry.resource);
+  return withRelevance.slice(0, limit).map((entry) => entry.resource);
 }
