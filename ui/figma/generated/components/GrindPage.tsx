@@ -180,7 +180,15 @@ function toDisplayResource(resource: ResourceApiItem): DisplayResource {
     skills: resource.skills.flatMap((skill) => (skill.name ? [skill.name] : [])),
     duration:
       resource.durationText ??
-      (resource.durationMinutes === null ? undefined : `${resource.durationMinutes} minutes`),
+      (resource.durationMinutes !== null
+        ? `${resource.durationMinutes} minutes`
+        : // MCIT courses never have durationMinutes/durationText set — course
+          // units is the only real effort signal available, so fall back to
+          // it (same 14-weeks-per-unit assumption used to default enrollment
+          // end dates elsewhere, e.g. AddResourceDialog.tsx and mark_course_status).
+          resource.course?.units != null
+        ? `${resource.course.units} CU (~${Math.round(resource.course.units * 14)} wks)`
+        : undefined),
     cost,
     url: resource.url ?? undefined,
     instructor: instructor || undefined,
