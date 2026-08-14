@@ -35,6 +35,12 @@ interface AgentChatProps {
   hasMoreConversations?: boolean;
   isLoadingMoreConversations?: boolean;
   onLoadMoreConversations?: () => void;
+  // Shown as tappable chips right after the greeting, before the user has
+  // sent anything in this conversation — lets a user coming from a fresh
+  // target-role selection get a useful answer in one click instead of
+  // staring at a blank input.
+  suggestedPrompts?: string[];
+  onSuggestedPromptClick?: (prompt: string) => void;
 }
 
 export function AgentChat({
@@ -54,6 +60,8 @@ export function AgentChat({
   hasMoreConversations = false,
   isLoadingMoreConversations = false,
   onLoadMoreConversations,
+  suggestedPrompts = [],
+  onSuggestedPromptClick,
 }: AgentChatProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -277,6 +285,20 @@ export function AgentChat({
               </div>
             </div>
           ))}
+          {!isSending && messages[messages.length - 1]?.role === 'agent' && suggestedPrompts.length > 0 && (
+            <div className="flex flex-wrap gap-2 pl-1">
+              {suggestedPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => onSuggestedPromptClick?.(prompt)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors hover:opacity-70"
+                  style={{ borderColor: 'rgba(2,116,111,0.3)', color: '#02746f' }}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
           {isSending && messages[messages.length - 1]?.role !== 'agent' && (
             <div className="flex justify-start">
               <div

@@ -156,8 +156,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
             coursesCompleted,
         };
 
-        const result = streamAgentReply(agentContext, history, message, profile_id);
-
         // Streams the reply as newline-delimited JSON: one {"type":"delta",...}
         // line per text chunk, then a final {"type":"done",...} line once the
         // full reply is generated and persisted (or {"type":"error",...} if
@@ -167,11 +165,56 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const stream = new ReadableStream<Uint8Array>({
             async start(controller) {
                 try {
-                    for await (const chunk of result.textStream) {
-                        controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', text: chunk }) + '\n'));
+                    // Gemini occasionally returns a completely empty completion
+                    // (finishReason "stop" with no text and no tool calls) —
+                    // confirmed live, intermittent, unrelated to request content.
+                    // Since a failed attempt never streams any chunks before we
+                    // know it failed, it's safe to retry once here, transparently
+                    // to the client, rather than surfacing a blank reply.
+                    const MAX_ATTEMPTS = 2;
+                    let reply = '';
+                    let toolResults: Awaited<ReturnType<typeof streamAgentReply>['toolResults']> = [];
+
+                    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+                        const result = streamAgentReply(agentContext, history, message, profile_id);
+                        let yieldedAny = false;
+
+                        for await (const chunk of result.textStream) {
+                            yieldedAny = true;
+                            controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', text: chunk }) + '\n'));
+                        }
+
+                        const [attemptReply, attemptToolResults, finishReason, warnings] = await Promise.all([
+                            result.text,
+                            result.toolResults,
+                            result.finishReason,
+                            result.warnings,
+                        ]);
+                        console.log(`[agent] profile=${profile_id} attempt=${attempt} finishReason=${finishReason} replyLength=${attemptReply.length} warnings=${JSON.stringify(warnings)}`);
+
+                        reply = attemptReply;
+                        toolResults = attemptToolResults;
+
+                        if (yieldedAny || attemptToolResults.length > 0 || attempt === MAX_ATTEMPTS) {
+                            break;
+                        }
+
+                        console.log(`[agent] profile=${profile_id} empty completion on attempt ${attempt}, retrying`);
                     }
 
-                    const [reply, toolResults] = await Promise.all([result.text, result.toolResults]);
+                    if (!reply.trim() && toolResults.length === 0) {
+                        // Both attempts came back genuinely empty (no text, no
+                        // tool calls) — surface this as a visible error instead
+                        // of silently completing with nothing, which previously
+                        // left the user staring at dead silence with no
+                        // indication anything had gone wrong.
+                        controller.enqueue(encoder.encode(JSON.stringify({
+                            type: 'error',
+                            error: "The agent didn't generate a response. Please try rephrasing your message.",
+                        }) + '\n'));
+                        return;
+                    }
+
                     const profileUpdated = didUpdateProfile(toolResults);
 
                     const now = new Date().toISOString();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AgentChat,
@@ -33,13 +33,39 @@ type AgentApiResponse = {
   error?: string;
 };
 
-const GREETING: AgentMessage = {
-  id: "greeting",
-  role: "agent",
-  content:
-    "Hi! I'm your TechPath AI Agent. I can help you update your profile, find learning materials, or answer questions about skills and career paths. How can I assist you today?",
-  timestamp: new Date(),
-};
+// Landscape redirects here right after a user sets/changes their target
+// role (LandscapeContainer.tsx) so they can immediately act on it — this
+// greeting (and the suggested prompts below) is what makes that redirect
+// land somewhere useful instead of a generic, unrelated chat box.
+function buildGreeting(targetRoleName: string | null): AgentMessage {
+  return {
+    id: "greeting",
+    role: "agent",
+    content: targetRoleName
+      ? `Hi! I'm your TechPath AI Agent. Your target role is now **${targetRoleName}** — want to see your skill gaps or course recommendations for it?`
+      : "Hi! I'm your TechPath AI Agent. I can help you update your profile, find learning materials, or answer questions about skills and career paths. How can I assist you today?",
+    timestamp: new Date(),
+  };
+}
+
+// The full pool a conversation can draw from — more than the 3 shown at once,
+// so there's something left to surface as earlier ones get used. Whichever
+// of these haven't been sent yet (as exact user-message text) in the current
+// conversation are shown, recomputed after every reply rather than just once.
+function buildSuggestedPrompts(targetRoleName: string | null): string[] {
+  if (!targetRoleName) return [];
+  return [
+    `What skills do I need for ${targetRoleName}?`,
+    `Recommend courses for ${targetRoleName}`,
+    `Build me a career plan for ${targetRoleName}`,
+    `How strong am I on the skills ${targetRoleName} needs?`,
+    `What's hiring right now for ${targetRoleName}?`,
+    `Tell me about the ${targetRoleName} role`,
+    `What tools and technologies does ${targetRoleName} use?`,
+  ];
+}
+
+const VISIBLE_SUGGESTED_PROMPTS = 3;
 
 function toAgentMessages(
   conversationId: number,
@@ -63,7 +89,7 @@ function toSummary(item: ConversationApiItem): AgentConversationSummary {
     title: item.title ?? "New Conversation",
     lastMessage: last?.content ?? "",
     timestamp: new Date(item.updatedAt),
-    messages: messages.length > 0 ? messages : [GREETING],
+    messages: messages.length > 0 ? messages : [buildGreeting(null)],
   };
 }
 
@@ -71,14 +97,27 @@ export default function AgentContainer() {
   const profile = useWorkspaceProfile();
   const router = useRouter();
 
+  const targetRoleName = profile.targetRole?.name ?? null;
+  const greeting = useMemo(() => buildGreeting(targetRoleName), [targetRoleName]);
+  const suggestedPrompts = useMemo(() => buildSuggestedPrompts(targetRoleName), [targetRoleName]);
+
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string>("new");
-  const [messages, setMessages] = useState<AgentMessage[]>([GREETING]);
+  const [messages, setMessages] = useState<AgentMessage[]>([greeting]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const usedPrompts = useMemo(
+    () => new Set(messages.filter((m) => m.role === "user").map((m) => m.content)),
+    [messages],
+  );
+  const visibleSuggestedPrompts = useMemo(
+    () => suggestedPrompts.filter((prompt) => !usedPrompts.has(prompt)).slice(0, VISIBLE_SUGGESTED_PROMPTS),
+    [suggestedPrompts, usedPrompts],
+  );
 
   const conversationIdRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -90,7 +129,11 @@ export default function AgentContainer() {
     history: { role: "assistant" | "user"; content: string }[];
   } | null>(null);
 
-  const SEND_TIMEOUT_MS = 30000;
+  // Multi-tool replies (e.g. recommend_courses_for_role, generate_career_plan)
+  // can genuinely take close to 30s depending on Gemini API latency — verified
+  // live that the same query can take anywhere from ~4s to ~30s. 30s was
+  // cutting off real (if slow) in-flight responses right at the edge.
+  const SEND_TIMEOUT_MS = 60000;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -122,9 +165,9 @@ export default function AgentContainer() {
   const handleNewConversation = useCallback(() => {
     conversationIdRef.current = null;
     setCurrentConversationId("new");
-    setMessages([GREETING]);
+    setMessages([greeting]);
     setError(null);
-  }, []);
+  }, [greeting]);
 
   const handleSelectConversation = useCallback(
     (id: string) => {
@@ -360,8 +403,7 @@ export default function AgentContainer() {
     }
   }, [conversations, profile.profileId, router]);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputValue.trim();
+  const sendMessage = useCallback(async (trimmed: string) => {
     if (!trimmed || isSending) return;
 
     const priorMessages = messages;
@@ -386,7 +428,15 @@ export default function AgentContainer() {
 
     lastAttemptRef.current = { trimmed, userMessage, priorMessages, wasNewConversation, history };
     await performSend(trimmed, userMessage, priorMessages, wasNewConversation, history);
-  }, [inputValue, isSending, messages, performSend]);
+  }, [isSending, messages, performSend]);
+
+  const handleSend = useCallback(async () => {
+    await sendMessage(inputValue.trim());
+  }, [inputValue, sendMessage]);
+
+  const handleSuggestedPromptClick = useCallback(async (prompt: string) => {
+    await sendMessage(prompt);
+  }, [sendMessage]);
 
   const handleRetry = useCallback(async () => {
     if (!lastAttemptRef.current || isSending) return;
@@ -412,11 +462,11 @@ export default function AgentContainer() {
       if (currentConversationId === id) {
         conversationIdRef.current = null;
         setCurrentConversationId("new");
-        setMessages([GREETING]);
+        setMessages([greeting]);
         setError(null);
       }
     },
-    [currentConversationId, profile.profileId],
+    [currentConversationId, profile.profileId, greeting],
   );
 
   return (
@@ -438,6 +488,8 @@ export default function AgentContainer() {
         hasMoreConversations={hasMoreConversations}
         isLoadingMoreConversations={isLoadingMoreConversations}
         onLoadMoreConversations={handleLoadMoreConversations}
+        suggestedPrompts={visibleSuggestedPrompts}
+        onSuggestedPromptClick={handleSuggestedPromptClick}
       />
     </div>
   );

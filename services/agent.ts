@@ -596,7 +596,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
     }),
     recommend_courses_for_role: tool({
       description:
-        "Recommend real MCIT courses covering a role's missing skills, combining skill-gap analysis and course lookup in one call. Prefer this over calling get_skill_gaps and find_mcit_courses_for_skill separately when the user wants course recommendations for a whole role.",
+        "Recommend real MCIT courses covering a role's missing skills, combining skill-gap analysis and course lookup in one call — this alone is a complete, sufficient answer to a plain 'recommend courses for this role' request. Prefer this over calling get_skill_gaps and find_mcit_courses_for_skill separately. Don't also call get_skill_gaps, get_skill_proficiency, or find_onet_technologies in the same turn unless the user's question specifically asks for those on top of course recommendations — extra tool calls the user didn't ask for only add latency.",
       inputSchema: z.object({
         roleId: z
           .number()
@@ -899,6 +899,9 @@ export function streamAgentReply(
   message: string,
   profileId: number,
 ) {
+  const startedAt = Date.now();
+  let stepIndex = 0;
+
   return streamText({
     model: google('gemini-2.5-flash'),
     system: buildSystemPrompt(context),
@@ -908,5 +911,18 @@ export function streamAgentReply(
     ],
     tools: buildAgentTools(profileId, context.availableRoles),
     stopWhen: stepCountIs(6),
+    // Diagnostic logging only — some replies have been observed taking
+    // 40-60s+ (vs. a typical 3-7s), and it wasn't clear whether that's from
+    // the model chaining more tool calls than needed or from raw Gemini API
+    // latency variance. This makes that visible in server logs instead of
+    // guessing next time it happens.
+    onStepFinish: ({ toolCalls }) => {
+      stepIndex += 1;
+      const elapsedMs = Date.now() - startedAt;
+      const toolNames = toolCalls.map((call) => call.toolName);
+      console.log(
+        `[agent] profile=${profileId} step=${stepIndex} +${elapsedMs}ms tools=[${toolNames.join(', ') || 'none'}]`,
+      );
+    },
   });
 }
