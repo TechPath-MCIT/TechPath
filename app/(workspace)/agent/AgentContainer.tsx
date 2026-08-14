@@ -129,7 +129,11 @@ export default function AgentContainer() {
     history: { role: "assistant" | "user"; content: string }[];
   } | null>(null);
 
-  const SEND_TIMEOUT_MS = 30000;
+  // Multi-tool replies (e.g. recommend_courses_for_role, generate_career_plan)
+  // can genuinely take close to 30s depending on Gemini API latency — verified
+  // live that the same query can take anywhere from ~4s to ~30s. 30s was
+  // cutting off real (if slow) in-flight responses right at the edge.
+  const SEND_TIMEOUT_MS = 60000;
 
   useEffect(() => {
     const controller = new AbortController();
