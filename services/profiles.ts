@@ -530,15 +530,9 @@ export async function setResourceStatusForProfile(
  * given statusId (defaults to the "Complete" status), then links every skill
  * associated with the resource to the profile and appends their names to the
  * profile's `skills` display string so the UI and agent stay in sync.
- *
- * Also invalidates any cached AI skill-proficiency ratings (ProfileSkillRating)
- * for exactly those skills, across every role — completing a course is new
- * evidence of proficiency, but the skill-ratings endpoint/tool only computes
- * ratings for skills *missing* from the cache, so a skill that already had a
- * (now stale) rating would otherwise never be re-evaluated. Deleting the rows
- * here lets that existing lazy-recompute path pick it back up on next request,
- * mirroring how replaceProfileSkills already invalidates on a full resume
- * replace — just scoped to the affected skillIds instead of the whole profile.
+ * (addSkillsToProfile below invalidates any cached AI skill-proficiency
+ * ratings for the newly-linked skills, so completion doesn't need its own
+ * copy of that logic.)
  * @param profile_ID the profile completing the resource
  * @param resource_id the resource to mark complete
  * @param statusId the resource_status.status_id representing completion
@@ -564,10 +558,6 @@ export async function completeResourceForProfile(profile_ID: number, resource_id
             await appendSkillsToField(profile_ID, skillNames);
             addedSkills = skillNames;
         }
-
-        await prisma.profileSkillRating.deleteMany({
-            where: { profileId: profile_ID, skillId: { in: skillIds } },
-        });
     }
 
     return { link, addedSkills };
@@ -653,6 +643,20 @@ export async function removeSkillsFromField(profile_ID: number, namesToRemove: s
 
 /**
  * add [id] to a given profile
+ *
+ * Also invalidates any cached AI skill-proficiency ratings (ProfileSkillRating)
+ * for exactly these skillIds, across every role. This is the single choke
+ * point every "add skills without a full replace" path goes through —
+ * course completion (completeResourceForProfile), the agent's add_skills
+ * tool, and the direct skills API route (via addSkillstoProfileByName) —
+ * so invalidating here once covers all of them. The skill-ratings
+ * endpoint/tool only computes ratings for skills *missing* from the cache,
+ * so a skill that already had a (now stale) rating would otherwise never
+ * be re-evaluated just because new evidence of proficiency was added.
+ * replaceProfileSkills does its own broader, whole-profile wipe before
+ * calling into here (for a full resume replace, where skills are also
+ * being *removed*, not just added) — this narrower per-call delete is a
+ * no-op in that case since there's nothing left to delete.
  * @param profile_ID to add [id] to
  * @param skills_ids array of skill id's to add [id]
  *
@@ -668,6 +672,12 @@ export async function addSkillsToProfile(profile_ID: number, skills_ids: number[
             })),
             skipDuplicates: true,
         });
+
+        if (skills_ids.length > 0) {
+            await prisma.profileSkillRating.deleteMany({
+                where: { profileId: profile_ID, skillId: { in: skills_ids } },
+            });
+        }
     }
 
     catch(error){
