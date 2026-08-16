@@ -315,7 +315,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
     }),
     mark_course_status: tool({
       description:
-        "Add or update an MCIT course on the user's profile — in progress or completed, with optional start/end dates, exactly like the Add dialog and pencil-edit on the Grind page. Only call this when the user explicitly says they've started, are planning to take, or finished a specific course by name. There's no separate 'upcoming' status and no separate 'move to upcoming' action — calling this with status: 'in_progress' and a future startDate is how a course (new OR already-tracked) shows under Upcoming instead of In Progress; calling it again on a course already on the profile updates its dates/status in place rather than erroring. If the user specifically asks to mark or move a course to 'upcoming' but hasn't given a date, ask them for the start date instead of guessing or inventing one — do not call this tool until you have a real date for that case. Completing a course also adds the skills it teaches to the user's profile.",
+        "Add or update an MCIT course on the user's profile — in progress or completed, with optional start/end dates, exactly like the Add dialog and pencil-edit on the Grind page. Only call this when the user explicitly says they've started, are planning to take, or finished a specific course by name. There's no separate 'upcoming' status and no separate 'move to upcoming' action — calling this with status: 'in_progress' and a future startDate is how a course (new OR already-tracked) shows under Upcoming instead of In Progress; calling it again on a course already on the profile updates its dates/status in place rather than erroring. If the user specifically asks to mark or move a course to 'upcoming' but hasn't given a date, ask them for the start date instead of guessing or inventing one — do not call this tool until you have a real date for that case. Completing a course also adds the skills it teaches to the user's profile. When status is 'in_progress', the result's displaySection field ('in_progress' or 'upcoming') tells you which section the course will actually appear under on the Grind page — always confirm using displaySection, not the literal status argument, since a future start date means it'll show under Upcoming even though the underlying status is still 'in_progress'.",
       inputSchema: z.object({
         courseName: z
           .string()
@@ -411,11 +411,25 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
         const inProgressDates = { startDate: inProgressStart, expectedEndDate: inProgressEnd };
 
         await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, inProgressDates);
+
+        // The DB status is always IN_PROGRESS_STATUS_ID here, but
+        // GrindPage.tsx (isPastOrToday) buckets a course under Upcoming
+        // instead of In Progress whenever its startDate is after today —
+        // found via live testing, where the agent confirmed "marked as in
+        // progress" for a future-dated course that then rendered under
+        // Upcoming, contradicting its own confirmation. Compute the same
+        // date-only-string comparison the frontend uses so the tool result
+        // (and the agent's reply) matches what the user will actually see.
+        const startDateIso = inProgressStart.toISOString().slice(0, 10);
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const displaySection: 'in_progress' | 'upcoming' = startDateIso <= todayIso ? 'in_progress' : 'upcoming';
+
         return {
           success: true,
           courseName: course.name,
           status: 'in_progress',
-          startDate: inProgressStart.toISOString().slice(0, 10),
+          displaySection,
+          startDate: startDateIso,
           expectedEndDate: inProgressEnd.toISOString().slice(0, 10),
         };
       },
