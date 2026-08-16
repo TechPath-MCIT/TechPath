@@ -530,6 +530,15 @@ export async function setResourceStatusForProfile(
  * given statusId (defaults to the "Complete" status), then links every skill
  * associated with the resource to the profile and appends their names to the
  * profile's `skills` display string so the UI and agent stay in sync.
+ *
+ * Also invalidates any cached AI skill-proficiency ratings (ProfileSkillRating)
+ * for exactly those skills, across every role — completing a course is new
+ * evidence of proficiency, but the skill-ratings endpoint/tool only computes
+ * ratings for skills *missing* from the cache, so a skill that already had a
+ * (now stale) rating would otherwise never be re-evaluated. Deleting the rows
+ * here lets that existing lazy-recompute path pick it back up on next request,
+ * mirroring how replaceProfileSkills already invalidates on a full resume
+ * replace — just scoped to the affected skillIds instead of the whole profile.
  * @param profile_ID the profile completing the resource
  * @param resource_id the resource to mark complete
  * @param statusId the resource_status.status_id representing completion
@@ -555,6 +564,10 @@ export async function completeResourceForProfile(profile_ID: number, resource_id
             await appendSkillsToField(profile_ID, skillNames);
             addedSkills = skillNames;
         }
+
+        await prisma.profileSkillRating.deleteMany({
+            where: { profileId: profile_ID, skillId: { in: skillIds } },
+        });
     }
 
     return { link, addedSkills };
