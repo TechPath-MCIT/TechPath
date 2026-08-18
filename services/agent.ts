@@ -25,7 +25,7 @@ const CANCELLED_STATUS_ID = 0;
 // `new Date("YYYY-MM-DD")` parses as UTC midnight, which reads back one
 // calendar day earlier on a server running behind UTC — same fix as the
 // resources API route and GrindPage.tsx use for the same reason.
-function parseIsoDateLocal(value: string): Date | null {
+export function parseIsoDateLocal(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
   const [, year, month, day] = match;
@@ -33,12 +33,26 @@ function parseIsoDateLocal(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// GrindPage.tsx (isPastOrToday) buckets a course under Upcoming instead of
+// In Progress whenever its startDate is after today — found via live
+// testing, where the agent confirmed "marked as in progress" for a
+// future-dated course that then rendered under Upcoming, contradicting its
+// own confirmation. This replicates the exact same date-only-string
+// comparison the frontend uses, so mark_course_status's result (and the
+// agent's reply) matches what the user will actually see. `now` is
+// injectable for testing.
+export function computeDisplaySection(startDate: Date, now: Date = new Date()): 'in_progress' | 'upcoming' {
+  const startDateIso = startDate.toISOString().slice(0, 10);
+  const todayIso = now.toISOString().slice(0, 10);
+  return startDateIso <= todayIso ? 'in_progress' : 'upcoming';
+}
+
 // Matches a free-text course query (e.g. "CIT5960", "Algorithms & Computation",
 // or the model's own combined "CIT5960 - Algorithms & Computation") against a
 // course's name and code. Checked in both directions — plain .includes(query)
 // alone misses combined code+name queries, since neither field individually
 // contains the full combined string.
-function courseNameMatches(query: string, name: string, courseId: string | null | undefined): boolean {
+export function courseNameMatches(query: string, name: string, courseId: string | null | undefined): boolean {
   const normalizedName = name.toLowerCase();
   const normalizedCode = courseId?.toLowerCase();
 
@@ -68,7 +82,7 @@ export interface AgentProfileContext {
   coursesCompleted: string[];
 }
 
-function buildSystemPrompt(context: AgentProfileContext): string {
+export function buildSystemPrompt(context: AgentProfileContext): string {
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -100,8 +114,28 @@ function buildSystemPrompt(context: AgentProfileContext): string {
       ? `Courses already completed: ${context.coursesCompleted.join(', ')}.`
       : null,
     "Keep responses concise and actionable. Suggest concrete next steps or resources when relevant.",
-    "Speak like an experienced career coach with a real point of view, not an agreeable assistant that validates everything. Ground your opinions in the data you actually have — skill gaps, match scores, role requirements, years of experience — and state them plainly, including when something looks like a weak spot, a stretch goal, or a plan with real gaps. Don't soften every observation into praise, and don't tell the user their plan sounds great if the data says otherwise. Lead with the direct assessment, then pivot to constructive next steps — bluntness isn't the same as being harsh, stay respectful throughout.",
-    "You can directly update the user's profile with the set_target_role, add_skills, remove_skills, set_location, set_years_of_experience, update_education, add_work_experience, remove_work_experience, add_project, remove_project, mark_course_status, and remove_course tools. Only call one of these when the user has clearly asked for that specific change — don't call a tool just because a role, skill, job, or degree was mentioned in conversation. In particular, a question like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" is asking for information, not asking you to set that as their target role — only an explicit instruction like \"set my target role to Data Scientist\" or \"I want my goal to be Data Scientist\" should trigger set_target_role.",
+    "Speak like an experienced career coach with a real point of view, " +
+    "not an agreeable assistant that validates everything. Ground your " +
+    "opinions in the data you actually have — skill gaps, match scores, " +
+    "role requirements, years of experience — and state them plainly, " +
+    "including when something looks like a weak spot, a stretch goal, " +
+    "or a plan with real gaps. Don't soften every observation into " +
+    "praise, and don't tell the user their plan sounds great if the " +
+    "data says otherwise. Lead with the direct assessment, then pivot " +
+    "to constructive next steps — bluntness isn't the same as being " +
+    "harsh, stay respectful throughout.",
+    "You can directly update the user's profile with the set_target_role, " +
+    "add_skills, remove_skills, set_location, set_years_of_experience, " +
+    "update_education, add_work_experience, remove_work_experience, " +
+    "add_project, remove_project, mark_course_status, and remove_course " +
+    "tools. Only call one of these when the user has clearly asked for " +
+    "that specific change — don't call a tool just because a role, skill, " +
+    "job, or degree was mentioned in conversation. In particular, a " +
+    "question like \"what steps should I take to become a data scientist\" " +
+    "or \"how do I become a data scientist\" is asking for information, " +
+    "not asking you to set that as their target role — only an explicit " +
+    "instruction like \"set my target role to Data Scientist\" or \"I want " +
+    "my goal to be Data Scientist\" should trigger set_target_role.",
     "Use get_skill_gaps, find_mcit_courses_for_skill, get_role_details, recommend_roles_for_skills, and recommend_courses_for_role freely and proactively — they're read-only, so no need to wait for an explicit request. Call them whenever they'd make your advice concrete: get_skill_gaps when discussing a role's requirements or the user's readiness, find_mcit_courses_for_skill before recommending how to learn one specific skill, get_role_details whenever salary, compensation, responsibilities, or job titles come up, recommend_roles_for_skills when the user asks what role fits their skills or wants suggestions without a target role in mind, recommend_courses_for_role when the user wants course recommendations for a whole role rather than a single skill — prefer it over chaining get_skill_gaps and find_mcit_courses_for_skill yourself.",
     "find_live_job_postings calls a real external job search API with limited quota, so only call it when the user explicitly asks about actual current job openings or what's hiring right now — not for general questions about a role, salary, or responsibilities, which get_role_details already answers from the database for free.",
     "When the user asks for a career plan, roadmap, or wants everything about a role summarized in one place, use generate_career_plan instead of chaining the individual tools yourself — it combines skill gaps, course recommendations, role details, and live job openings into one result. Present its output as a structured report (skill gaps, recommended courses per skill, role outlook, and current openings with applyUrl + source for each), not as a single dense paragraph.",
@@ -121,11 +155,17 @@ function buildSystemPrompt(context: AgentProfileContext): string {
   return lines.join('\n');
 }
 
-function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]) {
+export function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]) {
   return {
     set_target_role: tool({
       description:
-        "Set the user's target/dream career role. Only call this when the user explicitly asks to set or change their target role to a specific role from the available list. Do not call this when the user asks an informational question about a role, like \"what steps should I take to become a data scientist\" or \"how do I become a data scientist\" — that's a request for advice, not a request to change their goal.",
+          "Set the user's target/dream career role. Only call this when the " +
+          "user explicitly asks to set or change their target role to a " +
+          "specific role from the available list. Do not call this when the " +
+          "user asks an informational question about a role, like \"what steps " +
+          "should I take to become a data scientist\" or \"how do I become a " +
+          "data scientist\" — that's a request for advice, not a request to " +
+          "change their goal.",
       inputSchema: z.object({
         roleId: z
           .number()
@@ -315,7 +355,7 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
     }),
     mark_course_status: tool({
       description:
-        "Add or update an MCIT course on the user's profile — in progress or completed, with optional start/end dates, exactly like the Add dialog and pencil-edit on the Grind page. Only call this when the user explicitly says they've started, are planning to take, or finished a specific course by name. There's no separate 'upcoming' status and no separate 'move to upcoming' action — calling this with status: 'in_progress' and a future startDate is how a course (new OR already-tracked) shows under Upcoming instead of In Progress; calling it again on a course already on the profile updates its dates/status in place rather than erroring. If the user specifically asks to mark or move a course to 'upcoming' but hasn't given a date, ask them for the start date instead of guessing or inventing one — do not call this tool until you have a real date for that case. Completing a course also adds the skills it teaches to the user's profile. When status is 'in_progress', the result's displaySection field ('in_progress' or 'upcoming') tells you which section the course will actually appear under on the Grind page — always confirm using displaySection, not the literal status argument, since a future start date means it'll show under Upcoming even though the underlying status is still 'in_progress'.",
+        "Add or update an MCIT course on the user's profile — in progress or completed, with optional start/end dates, exactly like the Add dialog and pencil-edit on the Grind page. Only call this when the user explicitly says they've started, are planning to take, or finished a specific course by name. There's no separate 'upcoming' status and no separate 'move to upcoming' action — calling this with status: 'in_progress' and a future startDate is how a course (new OR already-tracked) shows under Upcoming instead of In Progress; calling it again on a course already on the profile updates its dates/status in place rather than erroring. If the user specifically asks to mark or move a course to 'upcoming' but hasn't given a date, ask them for the start date instead of guessing or inventing one — do not call this tool until you have a real date for that case. Completing a course also adds the skills it teaches to the user's profile.",
       inputSchema: z.object({
         courseName: z
           .string()
@@ -412,24 +452,15 @@ function buildAgentTools(profileId: number, availableRoles: AgentAvailableRole[]
 
         await profiles.setResourceStatusForProfile(profileId, course.id, IN_PROGRESS_STATUS_ID, inProgressDates);
 
-        // The DB status is always IN_PROGRESS_STATUS_ID here, but
-        // GrindPage.tsx (isPastOrToday) buckets a course under Upcoming
-        // instead of In Progress whenever its startDate is after today —
-        // found via live testing, where the agent confirmed "marked as in
-        // progress" for a future-dated course that then rendered under
-        // Upcoming, contradicting its own confirmation. Compute the same
-        // date-only-string comparison the frontend uses so the tool result
-        // (and the agent's reply) matches what the user will actually see.
-        const startDateIso = inProgressStart.toISOString().slice(0, 10);
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const displaySection: 'in_progress' | 'upcoming' = startDateIso <= todayIso ? 'in_progress' : 'upcoming';
-
+        // The DB status is always IN_PROGRESS_STATUS_ID here — displaySection
+        // (see computeDisplaySection above) is what tells the agent whether
+        // to actually confirm "in progress" or "upcoming".
         return {
           success: true,
           courseName: course.name,
           status: 'in_progress',
-          displaySection,
-          startDate: startDateIso,
+          displaySection: computeDisplaySection(inProgressStart),
+          startDate: inProgressStart.toISOString().slice(0, 10),
           expectedEndDate: inProgressEnd.toISOString().slice(0, 10),
         };
       },
